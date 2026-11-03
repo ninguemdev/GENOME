@@ -45,11 +45,11 @@ O núcleo de simulação é independente do PettingZoo. O `ParallelEnv` é um ad
 
 &#91;embedded content: arquitetura · 7 pacotes e o que chama o quê\]
 
-As setas indicam quem chama quem. O núcleo só depende de `genome.neat`, usado nos nascimentos; o visualizador recebe snapshots e nunca escreve no estado.
+As setas indicam quem chama quem. O núcleo não depende de nenhum outro pacote do GENOME: os operadores de genoma e os cérebros usados nos nascimentos chegam por protocolos injetados pelo laboratório. O visualizador recebe snapshots e nunca escreve no estado.
 
 ### 2.1 Regras de dependência
 
-- `genome.core` importa apenas genome.neat (operadores de genoma e compilação de redes, usados nos nascimentos), e genome.neat não importa nenhum outro pacote do GENOME.
+- `genome.core` não importa nenhum outro pacote do GENOME. Ele declara os protocolos `Brain` (avaliação em lote) e `GenomeOperators` (cópia, mutação, crossover e compilação de redes, usados nos nascimentos) em `genome.core.protocols`. O `genome.neat` importa só o `genome.core` e implementa esses protocolos, e o `genome.lab` injeta as implementações no núcleo. Os contratos completos estão em `docs/PADROES.md` §2 e são verificados pelo `import-linter` (ADR 0001).
 - `genome.envs`, `genome.lab` e `genome.viz` acessam o núcleo só pela sua interface pública (`reset`, `step_batch`, `snapshot`, `restore`).
 - `genome.viz` é somente leitura: recebe snapshots e nunca escreve no estado.
 - O estado das criaturas fica em arrays por atributo (posição `(N, 2)`, energia `(N,)` e assim por diante), pré-alocados com capacidade `max_population` e uma máscara de vivos. Vagas livres são reutilizadas por uma lista de slots.

@@ -43,7 +43,28 @@ O GENOME é um laboratório de vida artificial e neuroevolução em Python: cria
 
 O núcleo de simulação é independente do PettingZoo. O `ParallelEnv` é um adaptador fino sobre ele, e o laboratório chama o núcleo diretamente no caminho rápido, sem dicionários por agente.
 
-&#91;embedded content: arquitetura · 7 pacotes e o que chama o quê\]
+```mermaid
+flowchart TD
+    ext["Políticas externas<br/>(PettingZoo, RL)"]
+    lab["genome.lab<br/>modos, controladores fixos, controles, protocolo"]
+    envs["genome.envs<br/>GenomeParallelEnv"]
+    neat["genome.neat<br/>NEAT próprio"]
+    io["genome.io<br/>.genome, .species, Parquet, checkpoints"]
+    viz["genome.viz<br/>visualizador somente leitura"]
+    core["genome.core<br/>simulação determinística<br/>protocolos Brain e GenomeOperators"]
+
+    ext -->|reset, step| envs
+    lab -->|reset, step_batch, snapshot, restore| core
+    lab --> neat
+    lab --> io
+    lab --> viz
+    envs -->|reset, step_batch, state| core
+    io -->|tipos| core
+    io --> neat
+    viz -->|snapshots| core
+    neat -.->|implementa os protocolos| core
+    lab -.->|injeta Brain e GenomeOperators| core
+```
 
 As setas indicam quem chama quem. O núcleo não depende de nenhum outro pacote do GENOME: os operadores de genoma e os cérebros usados nos nascimentos chegam por protocolos injetados pelo laboratório. O visualizador recebe snapshots e nunca escreve no estado.
 
@@ -1178,7 +1199,17 @@ O desenvolvimento segue seis fases, cada uma fechada por um critério verificáv
 
 ### 13.1 Fases de desenvolvimento
 
-&#91;embedded content: roadmap · 6 fases e critérios de saída\]
+```mermaid
+flowchart TD
+    F0["F0 · Fundação<br/>repositório, ferramentas, configuração, seeds, toroide<br/><i>saída: CI verde, cobertura ≥ 90% em genome.core</i>"]
+    F1["F1 · MVP ecológico<br/>mundo, clima, plantas, criaturas, metabolismo, controladores fixos<br/><i>saída: heurístico sem extinção nem teto em 5 seeds × 10 000 ticks; balanços fecham</i>"]
+    F2["F2 · Inspeção e PettingZoo<br/>visualizador, GenomeParallelEnv, telemetria, checkpoints<br/><i>saída: parallel_api_test, caminhos equivalentes, retomada idêntica</i>"]
+    F3["F3 · NEAT e modo contínuo<br/>genoma, operadores, redes compiladas, reprodução sexuada<br/><i>saída: NEAT supera o aleatório e o nulo de reprodução</i>"]
+    F4["F4 · Modo treino e currículo<br/>especiação, fitness, 3 fases, controles<br/><i>saída: sanidade passa; as 3 fases completam</i>"]
+    F5["F5 · Experimentos<br/>protocolo, baterias, estatística<br/><i>saída: bateria confirmatória com relatório</i>"]
+
+    F0 --> F1 --> F2 --> F3 --> F4 --> F5
+```
 
 Cada fase só começa quando o critério de saída da anterior foi verificado.
 

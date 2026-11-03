@@ -898,6 +898,9 @@ O motivo do avanço é registrado. A Fase 3 termina em `G_max_fase` gerações o
 | `G_max_fase` | 200 | Limite de gerações por fase |
 | `G_trans` | 10 | Gerações de transição |
 | `G_plateau` | 50 | Gerações sem melhora para encerrar a Fase 3 |
+| `phase1_patch_count` | 16 | Manchas de plantas iniciais na Fase 1 (ADR 0003) |
+| `phase1_patch_radius` | 22 | Raio de cada mancha |
+| `phase1_patch_gap` | 24 | Distância mínima entre as bordas das manchas |
 
 ## 10. Rigor experimental
 

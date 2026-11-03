@@ -45,7 +45,7 @@ AGENTS.md proíbe números mágicos: todo parâmetro vem da configuração (§2.
 
 2. **Nomes:** os campos das tabelas usam o nome da tabela em `snake_case` minúsculo (PADROES §4). Nomes que colidiriam com palavras reservadas ou ficariam ambíguos ganham sufixo: `lambda` vira `lambda_grandchildren`. Os novos campos têm nomes descritivos em inglês.
 3. **Ângulos em graus no YAML** (`*_deg`), como na especificação. A configuração expõe propriedades `*_rad` para uso na simulação (§1.3).
-4. **Seeds:** `root_seed` não faz parte da configuração. Ela é argumento da execução (§2.2, `reset(seed)`) e fica no manifesto (§11.7). Assim, o `config_hash` é o mesmo para todas as seeds de uma condição. `lab_seed` fica em `LabConfig`, por ser fixa por protocolo, com o valor provisório 20261103.
+4. **Seeds:** `root_seed` não faz parte da configuração. Ela é argumento da execução (§2.2, `reset(seed)`) e fica no manifesto (§11.7). Assim, o `config_hash` é o mesmo para todas as seeds de uma condição. `lab_seed` fica em `LabConfig`, por ser fixa por protocolo, com o valor 20261103, confirmado pelo usuário.
 5. **Chaves dos fluxos aleatórios:** todo `spawn_key` tem a forma fixa `(domínio, g, k, fluxo)` (§2.5), com zero nas posições que o domínio não usa:
    - evolução: `(EVOLUTION, 0, 0, 0)`;
    - contínuo: `(CONTINUOUS, 0, 0, fluxo)`;
@@ -58,4 +58,4 @@ AGENTS.md proíbe números mágicos: todo parâmetro vem da configuração (§2.
 - Nenhum sistema da F1 em diante precisa de constante numérica própria: todo valor chega pela configuração.
 - Mudar qualquer um desses valores muda o `config_hash`, como deve ser.
 - `neat.topology_genesis` começa como `dense_starter`, porque a especificação não define um padrão. A escolha deve ser revista na F3.
-- A regra de §9.3 para "plantas iniciais em manchas espaçadas" não tem parâmetros numéricos na especificação. Eles entram, com ADR, na F4.
+- A regra de §9.3 para "plantas iniciais em manchas espaçadas" não tinha parâmetros numéricos na especificação. Eles foram definidos no ADR 0003.

@@ -100,6 +100,8 @@ def test_table_values_sample(training: GenomeConfig) -> None:
     assert (c.neat.t_tax, c.neat.delta_tax) == (1000, 3.0)
     assert (c.training.n, c.training.t_max, c.training.d_sat) == (200, 2000, 5.0)
     assert (c.curriculum.f_avanco, c.curriculum.g_max_fase) == (0.6, 200)
+    assert c.curriculum.phase1_patch_count == 16
+    assert (c.curriculum.phase1_patch_radius, c.curriculum.phase1_patch_gap) == (22.0, 24.0)
     assert (c.lab.n_seeds, c.lab.n_val, c.lab.n_test, c.lab.n_bootstrap) == (20, 3, 10, 10000)
     assert (c.lab.t_log, c.lab.t_ckpt, c.lab.flush_rows) == (10, 50000, 10000)
 
@@ -305,6 +307,10 @@ def test_invalid_yaml_file(tmp_path: Path) -> None:
         ("training", "t_max", 1500, "must equal training.t_max"),
         ("training", "n", 150, "must equal training.n"),
         ("curriculum", "g_trans", -1, r"g_trans must be >= 0"),
+        ("curriculum", "phase1_patch_count", 0, r"phase1_patch_count must be > 0"),
+        ("curriculum", "phase1_patch_radius", 0, r"phase1_patch_radius must be > 0"),
+        ("curriculum", "phase1_patch_radius", 128, r"phase1_patch_radius must be < min"),
+        ("curriculum", "phase1_patch_gap", -1, r"phase1_patch_gap must be >= 0"),
         ("lab", "n_seeds", 5, "n_seeds must be >= n_seeds_min"),
         ("lab", "alpha", 2.0, r"lab\.alpha must be in \[0, 1\]"),
     ],

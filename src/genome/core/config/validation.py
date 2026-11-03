@@ -230,7 +230,8 @@ def _check_curriculum(curriculum: CurriculumConfig, errors: Errors) -> None:
     errors += _positive(curriculum, prefix, "g_janela", "g_max_fase", "g_plateau")
     errors += _positive(curriculum, prefix, "phase1_plant_multiplier", "phase1_p_sol_multiplier")
     errors += _positive(curriculum, prefix, "phase1_cost_multiplier")
-    errors += _non_negative(curriculum, prefix, "g_trans")
+    errors += _positive(curriculum, prefix, "phase1_patch_count", "phase1_patch_radius")
+    errors += _non_negative(curriculum, prefix, "g_trans", "phase1_patch_gap")
 
 
 def _check_lab(lab: LabConfig, errors: Errors) -> None:
@@ -251,6 +252,13 @@ def _check_cross_section(config: GenomeConfig, errors: Errors) -> None:
         errors,
         _divides(sensors.cell_olf, world.width) and _divides(sensors.cell_olf, world.height),
         "world.width and world.height must be multiples of sensors.cell_olf (§5.3)",
+    )
+    curriculum = config.curriculum
+    # ADR 0003: a patch must fit inside the torus without seeing itself around it.
+    _require(
+        errors,
+        curriculum.phase1_patch_radius < half_side,
+        "curriculum.phase1_patch_radius must be < min(width, height) / 2",
     )
     _require(
         errors,

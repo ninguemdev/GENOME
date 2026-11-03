@@ -269,6 +269,9 @@ class CurriculumConfig:
     phase1_plant_multiplier: float
     phase1_p_sol_multiplier: float
     phase1_cost_multiplier: float
+    phase1_patch_count: int
+    phase1_patch_radius: float
+    phase1_patch_gap: float
 
 
 @dataclass(frozen=True, slots=True)

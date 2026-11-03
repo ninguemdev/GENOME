@@ -184,6 +184,9 @@ curriculum:                         # §9.3 a §9.6
   phase1_plant_multiplier: 2
   phase1_p_sol_multiplier: 2
   phase1_cost_multiplier: 0.7
+  phase1_patch_count: 16            # manchas da Fase 1 (ADR 0003)
+  phase1_patch_radius: 22
+  phase1_patch_gap: 24              # distância mínima entre bordas
 
 lab:                                # §7.6, §9.3, §10.6, §11.8
   lab_seed: 20261103

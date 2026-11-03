@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+
+# Ambientes (uv)
+.venv/
+venv/
+
+# Testes e cobertura
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Ferramentas
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+
+# Numba
+*.nbi
+*.nbc
+
+# IDEs e sistema
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude Code (local)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Saídas de execuções
+runs/

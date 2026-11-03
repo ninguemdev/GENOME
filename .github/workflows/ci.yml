@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Verificações (Linux, Python 3.12)
+    # Imagem fixa: a troca de ubuntu-latest não pode mudar o ambiente sem aviso.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Instalar uv
+        # setup-uv não publica tags de versão maior; fixa a versão completa.
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Ambiente
+        run: uv sync --locked
+
+      - name: Ruff (formatação)
+        run: uv run ruff format --check .
+
+      - name: Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy
+
+      - name: Contratos de camadas
+        run: uv run lint-imports
+
+      - name: Testes com cobertura
+        run: uv run pytest

@@ -1,0 +1,203 @@
+# Preset do modo contínuo (ARQUITETURA §12.1).
+# Valores das tabelas de parâmetros da ARQUITETURA; os que vêm do texto
+# corrido estão listados no ADR 0002. Ângulos em graus.
+
+run:                                # §2.3, §12.1
+  mode: continuous
+  max_ticks: null                   # sem limite
+  terminate_on_extinction: true
+  max_population: 1200
+
+world:                              # §3, §12.1
+  width: 512
+  height: 512
+  initial_population: 1000          # população inicial
+  n_rivers: 4
+  n_lakes: 10
+  n_puddle_sites: 80
+  n_obstacles: 0                    # desativados na v1 (§3.5)
+
+climate:                            # §3.6, §3.7
+  t_ciclo: 1000
+  t_dia: 600
+  t_crep: 50
+  p_sc: 0.0016666666666666668       # 1/600
+  p_cs: 0.005                       # 1/200
+  tau_u: 100
+  u_chuva: 1.0
+  u_seco: 0.2
+  rain_block_ticks: 100000          # §2.5
+
+water:                              # §3.2 a §3.4, §3.7
+  w_rio: 8
+  v_corr_max: 0.3
+  s_rio: 4
+  v_max_min: 1000                   # faixa sorteada de V_max dos lagos
+  v_max_max: 5000
+  k_r_max: 0.25                     # r_max = k_r_max · √V_max (§3.3)
+  rho_l: 0.0005
+  gamma_chuva: 3
+  v_p: 30
+  r_p_max: 3
+  eps_p: 0.1
+
+plants:                             # §4, §4.7, §12.1
+  e_stack: 25
+  b_max: 3
+  d_p: 3
+  r_irr: 6
+  k_max: 3
+  t_irr: 10
+  p_sol: 0.004
+  p_chuva: 0.0015
+  t_murcha: 200
+  irrigation_hop_factor: 1.1        # salto a até 1,1 · d_p (§4.2)
+  min_spacing_factor: 0.9           # nenhuma planta a menos de 0,9 · d_p (§4.4)
+  n_plantas_0: 2500
+  max_plants: 40000
+
+creatures:                          # §5.1, §5.6, §6.4
+  mass_min: 0.5
+  mass_max: 2.0
+  v_max_min: 0.5
+  v_max_max: 1.5
+  body_radius_exponent: 0.5         # r_c = M^(1/2)
+  e_max_per_mass: 100               # E_max = 100 · M
+  h_max_per_mass: 60                # H_max = 60 · M
+  t_vida_ref: 3000                  # T_vida = 3000 · M^(1/4)
+  t_vida_exponent: 0.25
+  t_mat_fraction: 0.1               # T_mat = 0,1 · T_vida
+  touch_margin: 0.5                 # r_t = r_c + 0,5
+  omega_max: 0.2
+  k_back: 0.5
+  k_lat: 0.5
+  k_inertia: 3
+  k_inertia_rot: 2
+  founder_energy_fraction: 0.6      # §5.6
+  founder_hydration_fraction: 0.8
+  d_min_agua: 5
+
+sensors:                            # §5.2 a §5.4, §5.7
+  r_vis: 40
+  m_noite: 0.5
+  fov_half_deg: 90
+  edge_window_deg: 15
+  receptor_mu_deg: [-70, -35, -10, 10, 35, 70]
+  receptor_sigma_deg: [20, 14, 8, 8, 14, 20]
+  cell_olf: 4
+  sigma_olf: 3                      # em células
+  t_olf: 10
+  alpha_olf_deg: 45
+  nostril_body_factor: 2            # δ = 2 · r_c + 1
+  nostril_offset: 1
+  k_olf_food: 0.5
+  k_olf_water: 2.0
+  eps_olf: 1.0e-6
+  s_min: 0.8
+
+metabolism:                         # §6.2, §7.1 a §7.4, §7.7
+  b_0: 0.06
+  b_v: 0.02
+  kleiber_exponent: 0.75            # M^(3/4)
+  surface_exponent: 0.6666666666666666  # M^(2/3)
+  k_sen: 0.5
+  f_sen: 0.8
+  c_m: 0.12
+  c_g: 0.02
+  c_a: 0.01
+  rho_h: 0.3
+  chi: 1.0
+  h_0: 0.06
+  kappa: 1.0
+  eta: 0.5
+  q_eat: 0.2
+  q_drink: 4.0
+  eat_threshold: 0.5
+  drink_threshold: 0.5
+  reproduce_threshold: 0.7
+  repr_min_energy_fraction: 0.8
+  repr_min_hydration_fraction: 0.6
+  child_energy_fraction: 0.4
+  child_hydration_fraction: 0.4
+  t_rec: 150
+  eps_repr: 0.8
+  reproduction_mode: mixed
+
+neat:                               # §6.1, §8.1 a §8.8, §11.4
+  topology_genesis: dense_starter
+  sparse_min_connections: 15
+  sparse_max_connections: 20
+  init_weight_sigma: 1.0
+  reproduce_bias_init: -2.0
+  founder_mass: 1.0
+  founder_v_max: 1.0
+  p_mutate_weights: 0.8
+  p_mutate_bias: 0.8
+  p_weight_perturb: 0.9
+  weight_perturb_sigma: 0.5
+  weight_reset_sigma: 1.0
+  weight_limit: 8.0
+  p_add_connection: 0.05
+  add_connection_attempts: 20
+  p_add_node: 0.03
+  p_toggle_connection: 0.01
+  mass_mutation_sigma: 0.05
+  v_max_mutation_sigma: 0.05
+  color_mutation_sigma: 0.02
+  crossover_disabled_prob: 0.75
+  c_1: 1.0
+  c_3: 0.4
+  c_b: 0.5
+  delta_0: 3.0
+  delta_increase: 1.05
+  delta_decrease: 0.95
+  s_alvo: 15
+  m_min: 2
+  a_prot: 10
+  g_estag: 20
+  protected_top_species: 2
+  survival_threshold: 0.5
+  elitism_min_size: 5
+  p_crossover: 0.75
+  p_interspecies: 0.001
+  in_world_mutation_rate: 0.0
+  import_mutation_rate: 0.0
+  t_tax: 1000
+  delta_tax: 3.0
+
+training:                           # §8.6, §8.8, §9.2, §9.6
+  n: 200
+  worlds_per_generation: 3
+  t_max: 2000
+  w_s: 0.5
+  w_b: 0.5
+  k_repr: 0.5
+  d_sat: 5
+  lambda_grandchildren: 0.5
+
+curriculum:                         # §9.3 a §9.6
+  f_avanco: 0.6
+  g_janela: 10
+  g_max_fase: 200
+  g_trans: 10
+  g_plateau: 50
+  phase1_plant_multiplier: 2
+  phase1_p_sol_multiplier: 2
+  phase1_cost_multiplier: 0.7
+
+lab:                                # §7.6, §9.3, §10.6, §11.8
+  lab_seed: 20261103
+  n_seeds: 20
+  n_seeds_min: 10
+  n_val: 3
+  n_test: 10
+  g_val: 5
+  alpha: 0.05
+  n_bootstrap: 10000
+  immobile_death_fraction: 0.95
+  ledger_tolerance: 1.0e-9
+  ledger_debug: false
+  t_log: 10
+  t_ckpt: 50000
+  g_ckpt: 10
+  flush_rows: 10000

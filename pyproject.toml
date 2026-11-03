@@ -42,6 +42,9 @@ include = ["*.py", "*.pyi", "**/pyproject.toml"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "NPY", "TID", "RUF", "D"]
 
+# Docstrings and comments quote the specification's symbols.
+allowed-confusables = ["α", "γ", "δ", "ε", "η", "θ", "κ", "μ", "ρ", "σ", "τ", "φ", "χ", "ω", "×", "−"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

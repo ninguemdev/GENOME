@@ -6,8 +6,9 @@ import pytest
 from numpy.testing import assert_allclose
 
 from genome.core.config import GenomeConfig
+from genome.core.founders import founder_bodies
 from genome.core.rng import continuous_world_streams
-from genome.lab.ecology import EcologyResult, founder_bodies, run_ecology
+from genome.lab.ecology import EcologyResult, run_ecology
 
 SHORT = 400
 

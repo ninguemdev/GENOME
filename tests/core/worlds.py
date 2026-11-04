@@ -29,6 +29,42 @@ def straight_river(width: float = 8.0, v_corr_max: float = 0.3) -> Rivers:
     )
 
 
+def no_rivers(width: float = 8.0, v_corr_max: float = 0.3) -> Rivers:
+    """A river network without rivers, on a 100 × 100 torus."""
+    empty = np.zeros(0, dtype=np.int64)
+    return Rivers(
+        vertices=np.zeros((0, 2)),
+        next_vertex=empty,
+        prev_vertex=empty,
+        samples=np.zeros((0, 2)),
+        width=width,
+        v_corr_max=v_corr_max,
+        size=SIZE,
+    )
+
+
+def dry_world(water: WaterConfig) -> Water:
+    """No water at all."""
+    return Water(
+        rivers=no_rivers(water.w_rio, water.v_corr_max),
+        lakes=Lakes(np.zeros((0, 2)), np.zeros(0), water.k_r_max, SIZE),
+        puddles=Puddles(np.zeros((0, 2)), water, SIZE),
+    )
+
+
+def pond_world(
+    water: WaterConfig, lake: tuple[float, float] | None, puddle: tuple[float, float] | None
+) -> Water:
+    """At most one full lake of V_max = 400 (r_max = 5) and one empty puddle site."""
+    centers = np.array([lake] if lake else np.zeros((0, 2)), dtype=np.float64).reshape(-1, 2)
+    sites = np.array([puddle] if puddle else np.zeros((0, 2)), dtype=np.float64).reshape(-1, 2)
+    return Water(
+        rivers=no_rivers(water.w_rio, water.v_corr_max),
+        lakes=Lakes(centers, np.full(centers.shape[0], 400.0), water.k_r_max, SIZE),
+        puddles=Puddles(sites, water, SIZE),
+    )
+
+
 def river_world(water: WaterConfig) -> Water:
     """Only the straight river: no lakes, no puddle sites."""
     return Water(

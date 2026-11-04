@@ -50,6 +50,11 @@ class Puddles:
         """Current radius r = r_p,max · √(V / V_p) (§3.4)."""
         return self._r_p_max * np.sqrt(self.volume / self._v_p)
 
+    def fill(self) -> FloatArray:
+        """Fraction of each puddle that holds water, V / V_p (§5.2, §5.3)."""
+        fill: FloatArray = self.volume / self._v_p
+        return fill
+
     def update(self, raining: bool, sun: float, water: WaterConfig) -> PuddleFlows:
         """Fill every site to V_p while raining; otherwise evaporate ε_p · I_sol (§3.4)."""
         if raining:

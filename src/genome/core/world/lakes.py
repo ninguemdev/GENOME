@@ -43,6 +43,11 @@ class Lakes:
         """Current radius r = r_max · √(V / V_max) (§3.3)."""
         return self.r_max * np.sqrt(self.volume / self.v_max)
 
+    def fill(self) -> FloatArray:
+        """Fraction of each lake that holds water, V / V_max (§5.2, §5.3)."""
+        fill: FloatArray = self.volume / self.v_max
+        return fill
+
     def regenerate(self, raining: bool, water: WaterConfig) -> float:
         """Apply V ← min(V_max, V + ρ_L · V_max · γ) and return the water added (§3.3)."""
         gamma = water.gamma_chuva if raining else 1.0

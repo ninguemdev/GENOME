@@ -63,9 +63,10 @@ class Lakes:
 
     def margin_distance(self, points: FloatArray) -> FloatArray:
         """Distance to the nearest lake bank, ``max(0, d − r(t))``; infinite without water."""
-        margin = np.maximum(0.0, self.center_distance(points) - self.radius())
-        margin = np.where(self.volume > 0.0, margin, np.inf)
-        return margin.min(axis=1, initial=np.inf)
+        wet = np.flatnonzero(self.volume > 0.0)
+        w, h = self._size
+        d = distance(points[:, None, :], self.centers[wet][None, :, :], w, h)
+        return np.maximum(0.0, d - self.radius()[wet]).min(axis=1, initial=np.inf)
 
     def within_max(self, points: FloatArray) -> BoolArray:
         """Whether each point lies inside the maximum area r_max of a lake (§4.4)."""

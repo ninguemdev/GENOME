@@ -85,6 +85,7 @@ class SmellFields:
         self._nx = round(world.width / sensors.cell_olf)
         self._ny = round(world.height / sensors.cell_olf)
         self._step = sensors.cell_olf / sensors.olf_water_subsamples
+        self._s_rio = config.water.s_rio
         self._river_cover = self._rasterise_rivers(water)
         self.food: FloatArray = np.zeros((self._nx, self._ny), dtype=np.float64)
         self.water: FloatArray = np.zeros((self._nx, self._ny), dtype=np.float64)
@@ -137,7 +138,13 @@ class SmellFields:
         x = (np.arange(nx, dtype=np.float64) + 0.5) * self._step
         y = (np.arange(ny, dtype=np.float64) + 0.5) * self._step
         points = np.stack(np.meshgrid(x, y, indexing="ij"), axis=-1).reshape(nx * ny, 2)
-        return water.rivers.contains(points).astype(np.float64).reshape(nx, ny)
+        # A point inside a river is within w_rio / 2 of the centre line, and a perception
+        # sample is within s_rio of that point of the line. Only those need the exact test.
+        reach = water.rivers.width / 2.0 + self._s_rio
+        near = water.rivers.sample_tree.query_ball_point(points, r=reach, return_length=True) > 0
+        cover = np.zeros(nx * ny, dtype=np.float64)
+        cover[near] = water.rivers.contains(points[near])
+        return cover.reshape(nx, ny)
 
     def _smooth(self, field: FloatArray) -> FloatArray:
         """Gaussian filter with toroidal borders (§5.3)."""

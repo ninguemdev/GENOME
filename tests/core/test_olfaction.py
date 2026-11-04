@@ -6,6 +6,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 from genome.core.config import GenomeConfig
+from genome.core.rng import continuous_world_streams
 from genome.core.sensors.olfaction import (
     SmellFields,
     bilinear,
@@ -16,7 +17,7 @@ from genome.core.sensors.olfaction import (
 )
 from genome.core.world.lakes import Lakes
 from genome.core.world.puddles import Puddles
-from genome.core.world.water import Water
+from genome.core.world.water import Water, generate_water
 from tests.core.scenes import make_creatures, make_plants, view_of
 from tests.core.worlds import SIDE, SIZE, dry_world, pond_world, river_world, straight_river
 
@@ -116,6 +117,25 @@ def test_rivers_weigh_one_where_a_lake_overlaps(config: GenomeConfig) -> None:
     coverage = SmellFields(water, small(config)).water_coverage(water)
     assert_allclose(coverage[12, 12], 1.0)
     assert_allclose(coverage[12, 11], 0.75)
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_filtered_river_raster_equals_the_exact_test_everywhere(
+    config: GenomeConfig, seed: int
+) -> None:
+    """The sample tree only narrows the candidates; it never changes the result."""
+    world = dataclasses.replace(config.world, n_lakes=0, n_puddle_sites=0)
+    riverine = dataclasses.replace(config, world=world)
+    water = generate_water(riverine, continuous_world_streams(seed).world)
+    coverage = SmellFields(water, riverine).water_coverage(water)
+
+    sub = config.sensors.olf_water_subsamples
+    n = coverage.shape[0] * sub
+    axis = (np.arange(n, dtype=np.float64) + 0.5) * (config.sensors.cell_olf / sub)
+    points = np.stack(np.meshgrid(axis, axis, indexing="ij"), axis=-1).reshape(n * n, 2)
+    exact = water.rivers.contains(points).astype(np.float64).reshape(n, n)
+    assert coverage.max() == 1.0
+    assert_allclose(coverage, exact.reshape(64, sub, 64, sub).mean(axis=(1, 3)))
 
 
 def test_stamp_wraps_around_the_torus() -> None:

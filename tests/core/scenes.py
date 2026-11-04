@@ -21,10 +21,11 @@ def make_creatures(
     colors: Sequence[float] | None = None,
     masses: Sequence[float] | None = None,
     ages: Sequence[int] | None = None,
+    capacity: int | None = None,
 ) -> CreatureState:
-    """Creatures in the given order, so ``uid`` follows it."""
+    """Creatures in the given order, so ``uid`` follows it; ``capacity`` leaves free slots."""
     n = len(positions)
-    state = CreatureState(max(n, 1))
+    state = CreatureState(capacity if capacity is not None else max(n, 1))
     mass = np.array(masses if masses is not None else [1.0] * n, dtype=np.float64)
     color = np.array(colors if colors is not None else [0.5] * n, dtype=np.float64)
     bodies = build_bodies(mass, np.ones(n), color, config.creatures)

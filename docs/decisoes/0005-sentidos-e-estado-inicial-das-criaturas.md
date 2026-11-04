@@ -7,7 +7,7 @@
 
 ## Contexto
 
-As seções de sentidos e locomoção descrevem os resultados esperados, mas deixam alguns detalhes em aberto: a tabela da visão não tem linha para criaturas, a fração de água por célula do olfato não tem algoritmo, a grade não fixa onde cada valor fica, e o estado inicial não diz como sortear as posições. As escolhas 1 a 6 foram aprovadas pelo usuário no plano do bloco 2 da F1. A escolha 7 surgiu na revisão do PR do bloco, ainda aguarda a confirmação dele e pode mudar sem afetar as demais.
+As seções de sentidos e locomoção descrevem os resultados esperados, mas deixam alguns detalhes em aberto: a tabela da visão não tem linha para criaturas, a fração de água por célula do olfato não tem algoritmo, a grade não fixa onde cada valor fica, e o estado inicial não diz como sortear as posições. As escolhas 1 a 6 foram aprovadas pelo usuário no plano do bloco 2 da F1. A escolha 7 surgiu na revisão do PR do bloco e foi aprovada no plano do bloco 3.
 
 ## Decisão
 

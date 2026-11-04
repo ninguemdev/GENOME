@@ -64,7 +64,7 @@ convention = "google"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 mypy_path = "src"
 
 # Numba and SciPy ship no type information; they are typed at the call sites.

@@ -1027,6 +1027,7 @@ Estratégias inesperadas não são necessariamente ruins.
 | `alpha` | 0,05 | Nível de significância |
 | `n_bootstrap` | 10 000 | Reamostragens do bootstrap |
 | `max_cap_fraction` | 0,1 | Fração máxima de ticks no teto da população no critério de saída da F1 (ADR 0006) |
+| `exit_min_ticks` | 10 000 | Duração mínima de uma execução no critério de saída da F1 (13.1) |
 | `heuristic_thirst_threshold`, `heuristic_hunger_threshold` | 0,5; 0,9 | Limiares do controle heurístico para beber e comer |
 | `heuristic_drink_until` | 0,9 | Até onde o heurístico bebe enquanto toca a água (ADR 0007) |
 | `heuristic_reproduce_energy`, `heuristic_reproduce_hydration` | 0,93; 0,7 | Reservas com que o heurístico tenta reproduzir (ADR 0004, 0007) |

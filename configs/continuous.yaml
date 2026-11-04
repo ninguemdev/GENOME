@@ -209,6 +209,7 @@ lab:                                # §7.6, §9.3, §10.6, §11.8
   g_ckpt: 10
   flush_rows: 10000
   max_cap_fraction: 0.1             # fração máxima de ticks no teto (ADR 0006)
+  exit_min_ticks: 10000             # duração do critério de saída da F1 (§13.1)
   heuristic_thirst_threshold: 0.5   # controlador heurístico (§10.2, ADR 0006)
   heuristic_hunger_threshold: 0.9
   heuristic_drink_until: 0.9        # continua bebendo até aqui ao tocar água (ADR 0007)

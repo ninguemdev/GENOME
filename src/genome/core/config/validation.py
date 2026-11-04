@@ -245,7 +245,7 @@ def _check_lab(lab: LabConfig, errors: Errors) -> None:
     errors += _non_negative(lab, "lab", "lab_seed")
     errors += _positive(lab, "lab", "n_seeds", "n_seeds_min", "n_val", "n_test", "g_val")
     errors += _positive(lab, "lab", "n_bootstrap", "ledger_tolerance", "t_log", "t_ckpt")
-    errors += _positive(lab, "lab", "g_ckpt", "flush_rows")
+    errors += _positive(lab, "lab", "g_ckpt", "flush_rows", "exit_min_ticks")
     errors += _unit_interval(lab, "lab", "alpha", "immobile_death_fraction", "max_cap_fraction")
     errors += _unit_interval(lab, "lab", "heuristic_thirst_threshold", "heuristic_hunger_threshold")
     errors += _unit_interval(
@@ -257,7 +257,38 @@ def _check_lab(lab: LabConfig, errors: Errors) -> None:
     _require(errors, lab.n_seeds >= lab.n_seeds_min, "lab.n_seeds must be >= n_seeds_min (§10.3)")
 
 
+def _check_heuristic(config: GenomeConfig, errors: Errors) -> None:
+    """Rules of the heuristic must be able to meet the requirements of §7.4 (ADR 0007)."""
+    lab, metabolism = config.lab, config.metabolism
+    _require(
+        errors,
+        lab.heuristic_reproduce_energy >= metabolism.repr_min_energy_fraction,
+        "lab.heuristic_reproduce_energy must be >= metabolism.repr_min_energy_fraction",
+    )
+    _require(
+        errors,
+        lab.heuristic_reproduce_hydration >= metabolism.repr_min_hydration_fraction,
+        "lab.heuristic_reproduce_hydration must be >= metabolism.repr_min_hydration_fraction",
+    )
+    _require(
+        errors,
+        lab.heuristic_drink_until >= lab.heuristic_reproduce_hydration,
+        "lab.heuristic_drink_until must be >= heuristic_reproduce_hydration",
+    )
+    # It stops eating at the hunger threshold, so one last bite must reach the reserve.
+    mass = config.neat.founder_mass
+    bite = metabolism.q_eat * mass**metabolism.kleiber_exponent * config.plants.e_stack
+    reachable = lab.heuristic_hunger_threshold + bite / (config.creatures.e_max_per_mass * mass)
+    _require(
+        errors,
+        reachable > lab.heuristic_reproduce_energy,
+        "lab.heuristic_reproduce_energy must be below what one bite past the hunger threshold "
+        "reaches (ADR 0007)",
+    )
+
+
 def _check_cross_section(config: GenomeConfig, errors: Errors) -> None:
+    _check_heuristic(config, errors)
     world, sensors, training = config.world, config.sensors, config.training
     half_side = min(world.width, world.height) / 2
     # §3.1: no perception radius may reach half the torus.

@@ -5,7 +5,7 @@ Usage: ``uv run python scripts/run_ecology.py --controller heuristic --seeds 1 2
 
 import argparse
 from pathlib import Path
-from typing import cast
+from typing import cast, get_args
 
 import numpy as np
 
@@ -19,7 +19,7 @@ def main() -> None:
     """Print population, deaths by cause and balance errors for each seed."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preset", type=Path, default=DEFAULT_PRESET)
-    parser.add_argument("--controller", default="heuristic")
+    parser.add_argument("--controller", default="heuristic", choices=get_args(ControllerName))
     parser.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3, 4, 5])
     args = parser.parse_args()
     config = load_config(args.preset)

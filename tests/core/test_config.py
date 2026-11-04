@@ -333,6 +333,12 @@ def test_invalid_yaml_file(tmp_path: Path) -> None:
         ("lab", "max_cap_fraction", 1.5, r"lab\.max_cap_fraction must be in \[0, 1\]"),
         ("lab", "heuristic_forward", 1.5, r"lab\.heuristic_forward must be in \[0, 1\]"),
         ("lab", "heuristic_turn_gain", -1.0, r"lab\.heuristic_turn_gain must be >= 0"),
+        ("lab", "exit_min_ticks", 0, r"lab\.exit_min_ticks must be > 0"),
+        ("lab", "heuristic_reproduce_hydration", 0.5, "must be >= metabolism.repr_min_hydration"),
+        ("lab", "heuristic_reproduce_energy", 0.7, "must be >= metabolism.repr_min_energy"),
+        ("lab", "heuristic_drink_until", 0.6, "must be >= heuristic_reproduce_hydration"),
+        ("lab", "heuristic_reproduce_energy", 0.96, "one bite past the hunger threshold"),
+        ("metabolism", "q_eat", 0.1, "one bite past the hunger threshold"),
     ],
 )
 def test_validation_rules(section: str, key: str, value: object, message: str) -> None:

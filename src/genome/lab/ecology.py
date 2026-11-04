@@ -67,11 +67,16 @@ class EcologyResult:
         return float(np.mean(self.population >= max_population))
 
     def passes_exit_criterion(self, config: GenomeConfig) -> bool:
-        """No extinction, not stuck at the cap, every balance closed (§7.6, §13.1, ADR 0006)."""
+        """A long enough run with births, no extinction, off the cap, balances closed.
+
+        Implements ARQUITETURA §7.6 and §13.1, with the definitions of ADR 0006.
+        """
         lab = config.lab
         closed = max(self.worst_energy_error, self.worst_water_error) < lab.ledger_tolerance
         at_cap = self.cap_fraction(config.run.max_population)
-        return not self.extinct and at_cap <= lab.max_cap_fraction and closed
+        long_enough = self.ticks >= lab.exit_min_ticks
+        ecology = self.births > 0 and not self.extinct and at_cap <= lab.max_cap_fraction
+        return long_enough and ecology and closed
 
 
 def founder_bodies(config: GenomeConfig, rng: np.random.Generator) -> Bodies:
@@ -93,27 +98,39 @@ def fixed_genomes(config: GenomeConfig) -> list[FixedGenome]:
 def make_controller(
     name: ControllerName, config: GenomeConfig, streams: WorldStreams
 ) -> Brain[FixedGenome]:
-    """The fixed controller called ``name``; only the random one draws numbers."""
+    """The fixed controller called ``name``; only the random one draws numbers.
+
+    Raises:
+        ValueError: If there is no controller with that name.
+    """
     if name == "heuristic":
         return HeuristicController(config)
     if name == "immobile":
         return ImmobileController()
-    return RandomController(streams.creatures)
+    if name == "random":
+        return RandomController(streams.creatures)
+    raise ValueError(f"unknown controller {name!r}")
+
+
+def make_simulation(
+    config: GenomeConfig, seed: int, controller: ControllerName
+) -> Simulation[FixedGenome]:
+    """A world of founders under a fixed controller; draws follow §2.5 and §8.1."""
+    streams = training_world_streams(seed, GENERATION, WORLD_INDEX, config.training)
+    bodies = founder_bodies(config, streams.creatures)
+    return Simulation(
+        config,
+        streams,
+        bodies,
+        fixed_genomes(config),
+        make_controller(controller, config, streams),
+        ClonalOperators(),
+    )
 
 
 def run_ecology(config: GenomeConfig, seed: int, controller: ControllerName) -> EcologyResult:
     """Run one world until it finishes (§2.4, §12.1)."""
-    streams = training_world_streams(seed, GENERATION, WORLD_INDEX, config.training)
-    bodies = founder_bodies(config, streams.creatures)
-    genomes = fixed_genomes(config)
-    simulation: Simulation[FixedGenome] = Simulation(
-        config,
-        streams,
-        bodies,
-        genomes,
-        make_controller(controller, config, streams),
-        ClonalOperators(),
-    )
+    simulation = make_simulation(config, seed, controller)
     limit = config.run.max_ticks if config.run.max_ticks is not None else 0
     population = np.zeros(limit, dtype=np.int64)
     births = starvation = dehydration = old_age = 0

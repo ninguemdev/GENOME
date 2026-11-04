@@ -1,4 +1,5 @@
 import dataclasses
+import math
 
 import numpy as np
 import pytest
@@ -19,11 +20,11 @@ def short(config: GenomeConfig, ticks: int = SHORT) -> GenomeConfig:
     return dataclasses.replace(config, run=run, training=training, lab=lab)
 
 
-def result(population: list[int], energy_error: float = 0.0) -> EcologyResult:
+def result(population: list[int], energy_error: float = 0.0, births: int = 1) -> EcologyResult:
     return EcologyResult(
         seed=1,
         population=np.array(population, dtype=np.int64),
-        births=0,
+        births=births,
         starvation=0,
         dehydration=0,
         old_age=0,
@@ -64,24 +65,48 @@ def test_seeds_change_the_world(config: GenomeConfig) -> None:
     assert first.final_hash != other.final_hash
 
 
+def any_length(config: GenomeConfig) -> GenomeConfig:
+    """A criterion that accepts these short made-up series."""
+    return dataclasses.replace(config, lab=dataclasses.replace(config.lab, exit_min_ticks=1))
+
+
 def test_exit_criterion_accepts_a_healthy_run(config: GenomeConfig) -> None:
-    assert result([200, 300, 400, 300]).passes_exit_criterion(config)
+    assert result([200, 300, 400, 300]).passes_exit_criterion(any_length(config))
 
 
 def test_exit_criterion_rejects_extinction(config: GenomeConfig) -> None:
     outcome = result([200, 100, 0])
     assert outcome.extinct
-    assert not outcome.passes_exit_criterion(config)
+    assert not outcome.passes_exit_criterion(any_length(config))
 
 
 def test_exit_criterion_rejects_a_population_stuck_at_the_cap(config: GenomeConfig) -> None:
     """ADR 0006: more than 10% of the ticks at ``max_population``."""
-    cap = config.run.max_population
+    criterion = any_length(config)
+    cap = criterion.run.max_population
     at_limit = result([cap] * 1 + [300] * 9)
     assert_allclose(at_limit.cap_fraction(cap), 0.1)
-    assert at_limit.passes_exit_criterion(config)
-    assert not result([cap] * 2 + [300] * 8).passes_exit_criterion(config)
+    assert at_limit.passes_exit_criterion(criterion)
+    assert not result([cap] * 2 + [300] * 8).passes_exit_criterion(criterion)
 
 
 def test_exit_criterion_rejects_an_open_balance(config: GenomeConfig) -> None:
-    assert not result([200, 300], energy_error=1e-8).passes_exit_criterion(config)
+    assert not result([200, 300], energy_error=1e-8).passes_exit_criterion(any_length(config))
+    assert not result([200, 300], energy_error=math.inf).passes_exit_criterion(any_length(config))
+
+
+def test_exit_criterion_rejects_a_run_without_births(config: GenomeConfig) -> None:
+    assert not result([200, 200], births=0).passes_exit_criterion(any_length(config))
+
+
+def test_exit_criterion_rejects_a_short_run(config: GenomeConfig) -> None:
+    """§13.1 asks for 10 000 ticks; a healthy generation of 2000 proves less."""
+    assert config.lab.exit_min_ticks == 10_000
+    assert not result([300] * 2000).passes_exit_criterion(config)
+    assert result([300] * 10_000).passes_exit_criterion(config)
+
+
+def test_unknown_controller_is_an_error(config: GenomeConfig) -> None:
+    """A typo must not silently run another control."""
+    with pytest.raises(ValueError, match="unknown controller"):
+        run_ecology(short(config, 1), 1, "heuristc")  # type: ignore[arg-type]

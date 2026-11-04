@@ -2,6 +2,8 @@
 
 The total comes from a run without the profiler; the systems come from a second
 run under it, which slows them down evenly, so read them as shares of the total.
+A few ticks run first, outside the clock, so that compiling or loading the Numba
+kernels does not count.
 
 Usage: ``uv run python scripts/bench.py --population 200 600``
 """
@@ -14,14 +16,13 @@ import time
 from pathlib import Path
 
 from genome.core.config import GenomeConfig, load_config
-from genome.core.rng import training_world_streams
 from genome.core.tick import Simulation
-from genome.lab.clonal import ClonalOperators
-from genome.lab.controllers import FixedGenome, HeuristicController
-from genome.lab.ecology import GENERATION, WORLD_INDEX, fixed_genomes, founder_bodies
+from genome.lab.controllers import FixedGenome
+from genome.lab.ecology import make_simulation
 
 PRESET = Path(__file__).resolve().parents[1] / "configs" / "f1_ecology.yaml"
 SEED = 1
+WARMUP_TICKS = 5
 # Systems reported, as (label, function name).
 SYSTEMS = (
     ("sensors", "build_observations"),
@@ -37,29 +38,28 @@ SYSTEMS = (
 )
 
 
-def make_simulation(config: GenomeConfig, population: int) -> Simulation[FixedGenome]:
-    """A world with ``population`` founders; they start apart and stay near that number."""
+def warm_world(config: GenomeConfig, population: int) -> Simulation[FixedGenome]:
+    """A world with ``population`` founders under the heuristic, after the warm-up ticks."""
     run = dataclasses.replace(config.run, max_population=max(population, config.run.max_population))
     world = dataclasses.replace(config.world, initial_population=population)
     training = dataclasses.replace(config.training, n=population)
     sized = dataclasses.replace(config, run=run, world=world, training=training)
-    streams = training_world_streams(SEED, GENERATION, WORLD_INDEX, sized.training)
-    bodies = founder_bodies(sized, streams.creatures)
-    return Simulation(
-        sized, streams, bodies, fixed_genomes(sized), HeuristicController(sized), ClonalOperators()
-    )
+    simulation = make_simulation(sized, SEED, "heuristic")
+    for _ in range(WARMUP_TICKS):
+        simulation.step_batch()
+    return simulation
 
 
 def bench(config: GenomeConfig, population: int, ticks: int) -> None:
     """Print the total and the share of each system for one population."""
-    simulation = make_simulation(config, population)
+    simulation = warm_world(config, population)
     start = time.perf_counter()
     for _ in range(ticks):
         simulation.step_batch()
     total = 1000.0 * (time.perf_counter() - start) / ticks
     print(f"\npopulation {population}: {total:.2f} ms/tick, ended at {simulation.state.pool.count}")
 
-    simulation = make_simulation(config, population)
+    simulation = warm_world(config, population)
     profile = cProfile.Profile()
     profile.enable()
     for _ in range(ticks):

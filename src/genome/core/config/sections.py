@@ -298,6 +298,7 @@ class LabConfig:
     g_ckpt: int
     flush_rows: int
     max_cap_fraction: float
+    exit_min_ticks: int
     heuristic_thirst_threshold: float
     heuristic_hunger_threshold: float
     heuristic_drink_until: float

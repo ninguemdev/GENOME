@@ -6,9 +6,12 @@ creatures, ``id`` for plants) only grow, and every system iterates live entries
 in identifier order (§2.5), never in slot order.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import numpy.typing as npt
 
+from genome.core.body import Bodies
 from genome.core.state_hash import NamedArray
 
 FloatArray = npt.NDArray[np.float64]
@@ -133,6 +136,30 @@ class PlantState:
         ]
 
 
+@dataclass(frozen=True, slots=True)
+class NewCreatures:
+    """What a batch of new creatures starts with, in ``uid`` order (§5.6, §7.4).
+
+    Attributes:
+        bodies: Genes and derived quantities.
+        position: Shape ``(n, 2)``.
+        heading: Orientation φ, shape ``(n,)``.
+        energy, hydration: Initial reserves.
+        parent_uid: ``uid`` of the parent, ``NO_ID`` for founders.
+        founder_id: Lineage of each creature; ``NO_ID`` makes it its own founder.
+        birth_tick: Tick of birth.
+    """
+
+    bodies: Bodies
+    position: FloatArray
+    heading: FloatArray
+    energy: FloatArray
+    hydration: FloatArray
+    parent_uid: IntArray
+    founder_id: IntArray
+    birth_tick: int
+
+
 class CreatureState:
     """Creatures: genes and dynamic state, one array per attribute (ARQUITETURA §2.1, §5, §6.3).
 
@@ -142,6 +169,8 @@ class CreatureState:
         parent_uid: ``uid`` of the parent, ``NO_ID`` for founders.
         birth_tick: Tick of birth.
         mass, v_max, color: Body genes (§5.1).
+        body_radius, touch_radius, e_max, h_max, t_vida, t_mat: Allometry (§5.1).
+        inertia_decay, rotation_decay: e^(−1/τ) and e^(−1/τ_rot), fixed at birth (§6.3).
         position: Shape ``(capacity, 2)``.
         heading: Orientation φ in ``[-π, π)``.
         velocity: Real velocity in world frame, shape ``(capacity, 2)`` (§6.3).
@@ -162,6 +191,14 @@ class CreatureState:
         self.mass: FloatArray = np.zeros(capacity, dtype=np.float64)
         self.v_max: FloatArray = np.zeros(capacity, dtype=np.float64)
         self.color: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.body_radius: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.touch_radius: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.e_max: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.h_max: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.t_vida: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.t_mat: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.inertia_decay: FloatArray = np.zeros(capacity, dtype=np.float64)
+        self.rotation_decay: FloatArray = np.zeros(capacity, dtype=np.float64)
         self.position: FloatArray = np.zeros((capacity, 2), dtype=np.float64)
         self.heading: FloatArray = np.zeros(capacity, dtype=np.float64)
         self.velocity: FloatArray = np.zeros((capacity, 2), dtype=np.float64)
@@ -173,6 +210,49 @@ class CreatureState:
         self.last_reproduction_tick: IntArray = np.full(capacity, NO_ID, dtype=np.int64)
         self.n_children: IntArray = np.zeros(capacity, dtype=np.int64)
 
+    def add(self, new: NewCreatures) -> IntArray:
+        """Insert creatures in the given order, so ``uid`` follows it; return their slots.
+
+        Velocity, age, memory and reproduction counters restart at zero, because
+        a slot may have belonged to a dead creature (§2.1, §5.6, §7.4).
+        """
+        slots = self.pool.allocate(int(new.energy.size))
+        uids = self.pool.ids[slots]
+        self.founder_id[slots] = np.where(new.founder_id == NO_ID, uids, new.founder_id)
+        self.parent_uid[slots] = new.parent_uid
+        self.birth_tick[slots] = new.birth_tick
+        self._set_bodies(slots, new.bodies)
+        self.position[slots] = new.position
+        self.heading[slots] = new.heading
+        self.velocity[slots] = 0.0
+        self.angular_velocity[slots] = 0.0
+        self.energy[slots] = new.energy
+        self.hydration[slots] = new.hydration
+        self.age[slots] = 0
+        self.memory[slots] = 0.0
+        self.last_reproduction_tick[slots] = NO_ID
+        self.n_children[slots] = 0
+        return slots
+
+    def remove(self, slots: IntArray) -> None:
+        """Free the slots of dead creatures; what they held leaves the system (§7.5)."""
+        self.pool.release(slots)
+        self.energy[slots] = 0.0
+        self.hydration[slots] = 0.0
+
+    def _set_bodies(self, slots: IntArray, bodies: Bodies) -> None:
+        self.mass[slots] = bodies.mass
+        self.v_max[slots] = bodies.v_max
+        self.color[slots] = bodies.color
+        self.body_radius[slots] = bodies.body_radius
+        self.touch_radius[slots] = bodies.touch_radius
+        self.e_max[slots] = bodies.e_max
+        self.h_max[slots] = bodies.h_max
+        self.t_vida[slots] = bodies.t_vida
+        self.t_mat[slots] = bodies.t_mat
+        self.inertia_decay[slots] = bodies.inertia_decay
+        self.rotation_decay[slots] = bodies.rotation_decay
+
     def named_arrays(self) -> list[NamedArray]:
         """Arrays that define the creature state, for ``state_hash``."""
         names = (
@@ -182,6 +262,14 @@ class CreatureState:
             "mass",
             "v_max",
             "color",
+            "body_radius",
+            "touch_radius",
+            "e_max",
+            "h_max",
+            "t_vida",
+            "t_mat",
+            "inertia_decay",
+            "rotation_decay",
             "position",
             "heading",
             "velocity",

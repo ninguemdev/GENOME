@@ -97,7 +97,9 @@ As setas indicam quem chama quem. O núcleo não depende de nenhum outro pacote 
 - `rewards[a]` é o incremento de fitness da própria criatura no tick (9.2): a soma ao longo da vida dá F\_base mais o bônus de reprodução acumulado enquanto ela está viva. O fitness oficial do NEAT é sempre o calculado pelo laboratório no fim da geração.
 - `infos[a]` inclui `uid`, `founder_id`, `born` e `death_cause`.
 
-**Equivalência dos caminhos:** a mesma seed e as mesmas ações produzem estados idênticos pelo `GenomeParallelEnv` e pelo caminho rápido (`core.step_batch`). Um teste automatizado garante isso, e outro roda `pettingzoo.test.parallel_api_test`.
+**Equivalência dos caminhos:** a mesma seed e as mesmas ações produzem estados idênticos pelo `GenomeParallelEnv` e pelo caminho rápido (`core.step_batch`). Um teste automatizado garante isso, e outro roda `pettingzoo.test.parallel_api_test`. O teste oficial proíbe que um agente terminado volte, então roda em cenários sem reuso de slot; o reuso tem teste próprio.
+
+**Decisões do adaptador (ADR 0008):** operadores, fundadores e renderizador são injetados pelo `genome.lab`, porque `genome.envs` só importa `genome.core`. `options["controller"]` é uma fábrica `(config, streams) -> Brain`. Causas de morte simultâneas ficam em `death_cause` unidas por `+`. Quem morre no tick recebe a última observação que já tinha recebido.
 
 ### 2.3 Configuração
 

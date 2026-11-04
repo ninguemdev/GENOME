@@ -9,7 +9,7 @@ import math
 import numpy as np
 import numpy.typing as npt
 
-from genome.core.body import Bodies
+from genome.core.body import Bodies, build_bodies
 from genome.core.config import GenomeConfig
 from genome.core.state import NO_ID, CreatureState, NewCreatures
 from genome.core.world.water import Water
@@ -21,6 +21,17 @@ IntArray = npt.NDArray[np.int64]
 CANDIDATE_BATCH = 1024
 # Batches allowed before the world is declared unable to hold the founders.
 MAX_BATCHES = 100
+
+
+def founder_bodies(config: GenomeConfig, rng: np.random.Generator) -> Bodies:
+    """Founders of generation 0: M = 1, v_max = 1 and a drawn colour (§8.1)."""
+    n = config.world.initial_population
+    return build_bodies(
+        np.full(n, config.neat.founder_mass),
+        np.full(n, config.neat.founder_v_max),
+        rng.uniform(0.0, 1.0, n),
+        config.creatures,
+    )
 
 
 def create_founders(

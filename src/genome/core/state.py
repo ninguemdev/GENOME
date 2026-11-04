@@ -194,6 +194,7 @@ class CreatureState:
         memory: Memory register O_mem of the previous tick (§6.1).
         last_reproduction_tick: Tick of the last birth given; ``NO_ID`` if none (§7.4).
         n_children: Children born to the creature (§9.2).
+        n_grandchildren: Grandchildren born while the creature is alive (§9.2).
     """
 
     def __init__(self, capacity: int) -> None:
@@ -223,6 +224,7 @@ class CreatureState:
         self.memory: FloatArray = np.zeros(capacity, dtype=np.float64)
         self.last_reproduction_tick: IntArray = np.full(capacity, NO_ID, dtype=np.int64)
         self.n_children: IntArray = np.zeros(capacity, dtype=np.int64)
+        self.n_grandchildren: IntArray = np.zeros(capacity, dtype=np.int64)
 
     def add(self, new: NewCreatures) -> IntArray:
         """Insert creatures in the given order, so ``uid`` follows it; return their slots.
@@ -246,6 +248,7 @@ class CreatureState:
         self.memory[slots] = 0.0
         self.last_reproduction_tick[slots] = NO_ID
         self.n_children[slots] = 0
+        self.n_grandchildren[slots] = 0
         return slots
 
     def remove(self, slots: IntArray) -> tuple[float, float]:
@@ -301,6 +304,7 @@ class CreatureState:
             "memory",
             "last_reproduction_tick",
             "n_children",
+            "n_grandchildren",
         )
         own: list[NamedArray] = [(f"creatures.{n}", getattr(self, n)) for n in names]
         return [*self.pool.named_arrays("creatures"), *own]

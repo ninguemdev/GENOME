@@ -6,8 +6,8 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
-from genome.core.body import Bodies, build_bodies
 from genome.core.config import GenomeConfig
+from genome.core.founders import founder_bodies
 from genome.core.protocols import Brain
 from genome.core.rng import WorldStreams, training_world_streams
 from genome.core.state_hash import state_hash
@@ -77,17 +77,6 @@ class EcologyResult:
         long_enough = self.ticks >= lab.exit_min_ticks
         ecology = self.births > 0 and not self.extinct and at_cap <= lab.max_cap_fraction
         return long_enough and ecology and closed
-
-
-def founder_bodies(config: GenomeConfig, rng: np.random.Generator) -> Bodies:
-    """Founders of generation 0: M = 1, v_max = 1 and a drawn colour (§8.1)."""
-    n = config.world.initial_population
-    return build_bodies(
-        np.full(n, config.neat.founder_mass),
-        np.full(n, config.neat.founder_v_max),
-        rng.uniform(0.0, 1.0, n),
-        config.creatures,
-    )
 
 
 def fixed_genomes(config: GenomeConfig) -> list[FixedGenome]:

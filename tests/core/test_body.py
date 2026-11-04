@@ -99,6 +99,7 @@ def test_reused_slot_does_not_inherit_the_dead_creature(config: GenomeConfig) ->
     state.memory[slot] = 0.7
     state.last_reproduction_tick[slot] = 5
     state.n_children[slot] = 2
+    state.n_grandchildren[slot] = 3
     # What the dead held leaves the system through the ledger (§7.6).
     assert state.remove(np.array([slot], dtype=np.int64)) == (60.0, 48.0)
     assert state.energy[slot] == 0.0
@@ -113,6 +114,7 @@ def test_reused_slot_does_not_inherit_the_dead_creature(config: GenomeConfig) ->
     assert state.memory[slot] == 0.0
     assert state.last_reproduction_tick[slot] == NO_ID
     assert state.n_children[slot] == 0
+    assert state.n_grandchildren[slot] == 0
 
 
 def test_child_inherits_the_lineage_it_is_given(config: GenomeConfig) -> None:

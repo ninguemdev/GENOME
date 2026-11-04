@@ -234,11 +234,18 @@ class CreatureState:
         self.n_children[slots] = 0
         return slots
 
-    def remove(self, slots: IntArray) -> None:
-        """Free the slots of dead creatures; what they held leaves the system (§7.5)."""
+    def remove(self, slots: IntArray) -> tuple[float, float]:
+        """Free the slots of dead creatures (§7.5).
+
+        Returns:
+            ``(energy, water)`` they held, which leave the system through the ledger (§7.6).
+        """
         self.pool.release(slots)
+        energy = float(np.sum(self.energy[slots]))
+        water = float(np.sum(self.hydration[slots]))
         self.energy[slots] = 0.0
         self.hydration[slots] = 0.0
+        return energy, water
 
     def _set_bodies(self, slots: IntArray, bodies: Bodies) -> None:
         self.mass[slots] = bodies.mass

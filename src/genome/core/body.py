@@ -67,9 +67,10 @@ def build_bodies(
 def _require_genes(
     mass: FloatArray, v_max: FloatArray, color: FloatArray, creatures: CreatureConfig
 ) -> None:
-    if np.any((mass < creatures.mass_min) | (mass > creatures.mass_max)):
+    """Check the ranges of §5.1; written so that NaN fails every test."""
+    if not np.all((mass >= creatures.mass_min) & (mass <= creatures.mass_max)):
         raise ValueError(f"mass outside [{creatures.mass_min}, {creatures.mass_max}]")
-    if np.any((v_max < creatures.v_max_min) | (v_max > creatures.v_max_max)):
+    if not np.all((v_max >= creatures.v_max_min) & (v_max <= creatures.v_max_max)):
         raise ValueError(f"v_max outside [{creatures.v_max_min}, {creatures.v_max_max}]")
-    if np.any((color < 0.0) | (color >= 1.0)):
+    if not np.all((color >= 0.0) & (color < 1.0)):
         raise ValueError("color outside [0, 1)")

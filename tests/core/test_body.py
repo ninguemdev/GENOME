@@ -53,6 +53,9 @@ def test_lightest_creature_outlives_a_generation(config: GenomeConfig) -> None:
         (1.0, 1.6, 0.5, "v_max outside"),
         (1.0, 1.0, 1.0, "color outside"),
         (1.0, 1.0, -0.1, "color outside"),
+        (math.nan, 1.0, 0.5, "mass outside"),
+        (1.0, math.nan, 0.5, "v_max outside"),
+        (1.0, 1.0, math.nan, "color outside"),
     ],
 )
 def test_genes_out_of_range_are_rejected(
@@ -96,7 +99,8 @@ def test_reused_slot_does_not_inherit_the_dead_creature(config: GenomeConfig) ->
     state.memory[slot] = 0.7
     state.last_reproduction_tick[slot] = 5
     state.n_children[slot] = 2
-    state.remove(np.array([slot], dtype=np.int64))
+    # What the dead held leaves the system through the ledger (§7.6).
+    assert state.remove(np.array([slot], dtype=np.int64)) == (60.0, 48.0)
     assert state.energy[slot] == 0.0
     assert state.hydration[slot] == 0.0
 

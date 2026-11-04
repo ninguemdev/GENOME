@@ -207,3 +207,25 @@ def test_restore_refuses_streams_of_another_generator(config: GenomeConfig) -> N
     streams = {**snapshot.streams, "plants": {"bit_generator": "MT19937"}}
     with pytest.raises(ValueError, match="PCG64"):
         simulation.restore(dataclasses.replace(snapshot, streams=streams))
+
+
+def test_restore_refuses_a_malformed_stream_before_any_write(config: GenomeConfig) -> None:
+    simulation = make_simulation(small(config), 3, "immobile")
+    snapshot = simulation.snapshot()
+    simulation.step_batch()
+    before = state_hash(simulation.named_arrays())
+    streams = {**snapshot.streams, "creatures": {"bit_generator": "PCG64"}}
+    with pytest.raises(ValueError, match="creatures"):
+        simulation.restore(dataclasses.replace(snapshot, streams=streams))
+    assert state_hash(simulation.named_arrays()) == before
+
+
+def test_restore_refuses_rain_of_another_shape(config: GenomeConfig) -> None:
+    simulation = make_simulation(small(config), 3, "immobile")
+    snapshot = simulation.snapshot()
+    arrays = tuple(
+        (name, array.reshape(1, -1) if name == "climate.rain" else array)
+        for name, array in snapshot.arrays
+    )
+    with pytest.raises(ValueError, match=r"climate\.rain"):
+        simulation.restore(dataclasses.replace(snapshot, arrays=arrays))

@@ -202,8 +202,10 @@ def require_stream_states(state: dict[str, GeneratorState]) -> None:
     if missing:
         raise ValueError(f"missing stream states: {missing}")
     for name in expected:
-        if state[name].get("bit_generator") != "PCG64":
-            raise ValueError(f"expected a PCG64 state in stream {name!r}")
+        try:
+            restore_generator(state[name])
+        except (KeyError, TypeError, AttributeError) as error:
+            raise ValueError(f"invalid state in stream {name!r}") from error
 
 
 def _world_streams(entropy: int, domain: Domain, g: int, k: int) -> WorldStreams:

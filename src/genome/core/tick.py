@@ -218,6 +218,8 @@ class Simulation[G]:
         saved = dict(snapshot.arrays)
         self.environment.water.require_same_geography(saved)
         require_same_shapes([pair for pair in current if pair[0] not in GROWING_ARRAYS], saved)
+        if saved["climate.rain"].ndim != 1:
+            raise ValueError("the snapshot does not match this simulation: climate.rain")
         require_stream_states(snapshot.streams)
         live = active_slots(saved["creatures.alive"], saved["creatures.ids"])
         if [slot for slot, _ in snapshot.genomes] != live.tolist():

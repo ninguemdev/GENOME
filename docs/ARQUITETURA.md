@@ -323,7 +323,7 @@ Uma planta sem irrigação perde 1/`T_murcha` de biomassa por tick, um stack a c
 | `r_irr` | 6 | Alcance da irrigação direta |
 | `k_max` | 3 | Saltos máximos de irrigação entre plantas |
 | `T_irr` | 10 | Intervalo de recálculo da irrigação (ticks) |
-| `p_sol` | 0,004 | Chance de crescer por tick sob sol pleno |
+| `p_sol` | 0,012 | Chance de crescer por tick sob sol pleno (calibrado, ADR 0007) |
 | `p_chuva` | 0,0015 | Chance de crescer por tick de dia com chuva |
 | `T_murcha` | 200 | Ticks para perder um stack sem irrigação |
 
@@ -944,7 +944,7 @@ Só execuções confirmatórias, com protocolo congelado antes de rodar, sustent
 | Controle | Descrição | O que verifica |
 | --- | --- | --- |
 | Aleatório | `dense_starter` com pesos sorteados, sem evolução | Linha de base mínima |
-| Heurístico | Regras fixas: ir à comida mais forte na visão; beber quando H < 0,5 e houver água visível; comer ao tocar planta quando E < 0,9; senão, explorar andando e girando | Se a evolução supera uma estratégia razoável |
+| Heurístico | Regras fixas: ir à comida mais forte na visão; ir beber quando H < 0,5 e houver água visível, bebendo até H = 0,9; comer ao tocar planta quando E < 0,9; reproduzir com folga e pouca densidade à vista (ADR 0007); senão, explorar andando e girando | Se a evolução supera uma estratégia razoável |
 | Imóvel | Nunca se move; tenta comer e beber em todo tick | Sanidade do mundo (invariante, 9.3) |
 | Nulo (treino) | NEAT completo, mas os genitores são sorteados ao acaso, ignorando o fitness; mutação e deriva mantidas | Adaptação real contra deriva neutra |
 | Nulo de reprodução (contínuo) | A cada nascimento, o genoma do filho vem de uma criatura viva sorteada; o genitor real paga o custo | Remove a seleção sobre a reprodução. É um nulo parcial: a seleção por sobrevivência continua |
@@ -1026,6 +1026,14 @@ Estratégias inesperadas não são necessariamente ruins.
 | `G_val` | 5 | Intervalo entre validações (gerações) |
 | `alpha` | 0,05 | Nível de significância |
 | `n_bootstrap` | 10 000 | Reamostragens do bootstrap |
+| `max_cap_fraction` | 0,1 | Fração máxima de ticks no teto da população no critério de saída da F1 (ADR 0006) |
+| `heuristic_thirst_threshold`, `heuristic_hunger_threshold` | 0,5; 0,9 | Limiares do controle heurístico para beber e comer |
+| `heuristic_drink_until` | 0,9 | Até onde o heurístico bebe enquanto toca a água (ADR 0007) |
+| `heuristic_reproduce_energy`, `heuristic_reproduce_hydration` | 0,93; 0,7 | Reservas com que o heurístico tenta reproduzir (ADR 0004, 0007) |
+| `heuristic_crowding_limit` | 0,02 | Maior densidade à vista com que o heurístico tenta reproduzir (ADR 0007) |
+| `heuristic_forward` | 0,8 | Comando frontal do heurístico (próximo do cruzeiro ótimo, §12.2) |
+| `heuristic_turn_gain`, `heuristic_explore_turn` | 2,0; 0,3 | Ganho do giro ao alvo e amplitude do giro ao explorar |
+| `heuristic_memory_step` | 0,01 | Passo por tick da fase de exploração guardada na memória |
 
 ## 11. Formatos de dados, telemetria e checkpoints
 
@@ -1157,7 +1165,7 @@ Cada execução grava `manifest.yaml` com: configuração completa e `config_has
 | Água de quem forrageia | clima médio 0,079 + movimento 0,031 + conversão 0,014 | \~0,124 H/tick (\~4 recargas por geração) |
 | Esvaziamento relativo | água 0,21%/tick contra energia 0,13%/tick | água \~1,6× mais rápida |
 | Prazo do fundador para achar água | 48 / 0,124 | \~390 ticks |
-| Produção por planta irrigada | 0,55 × (0,75 × 0,004 + 0,25 × 0,0015) × 25 | \~0,046 E/tick |
+| Produção por planta irrigada | 0,55 × (0,75 × 0,012 + 0,25 × 0,0015) × 25 | \~0,129 E/tick |
 | Velocidade ótima de cruzeiro | √(C\_basal / (c\_m · M)) | \~0,82 · v\_max |
 | Distância de frenagem | v · τ | 3 unidades |
 
@@ -1166,7 +1174,7 @@ A velocidade ótima fica no meio da faixa do gene v\_max, não num extremo: a ev
 ### 12.3 Capacidade de suporte
 
 ```latex
-N_{\text{sustentável}} \approx \frac{N_{\text{pp}} \times 0{,}046}{0{,}13} \approx 0{,}35\, N_{\text{pp}}
+N_{\text{sustentável}} \approx \frac{N_{\text{pp}} \times 0{,}129}{0{,}13} \approx N_{\text{pp}}
 ```
 
 N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cercadas não produzem). A fórmula é um ponto de partida para dimensionar rios e lagos; a capacidade real é menor e depende de quanto as criaturas pastam.
@@ -1175,7 +1183,7 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 
 - **Espaço:** uma criatura a cada \~262 unidades², espaçamento médio de \~16 unidades. Os corpos ocupam \~1,2% do mapa.
 - **Visão:** em média \~10 criaturas no campo de visão de dia e \~2,5 à noite, com 3 a 5 vezes mais perto da água.
-- **Comida:** \~2850 plantas produtivas, ou cerca de 4000 a 6000 plantas no total. Com 4 rios atravessando o mapa, a faixa irrigável (\~15 unidades de cada margem) soma \~23% da área e comporta \~7900 posições cristalinas, sem contar os lagos.
+- **Comida:** \~1000 plantas produtivas (12.3), num total limitado pela área irrigável. Com 4 rios atravessando o mapa, a faixa irrigável (\~15 unidades de cada margem) soma \~23% da área e comporta \~7900 posições cristalinas, sem contar os lagos.
 
 ### 12.5 Estratégias de desempenho
 

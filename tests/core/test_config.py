@@ -105,7 +105,7 @@ def test_table_values_sample(training: GenomeConfig) -> None:
     assert math.isclose(c.climate.p_cs, 1 / 200)
     assert (c.climate.t_ciclo, c.climate.t_dia, c.climate.t_crep) == (1000, 600, 50)
     assert (c.water.w_rio, c.water.rho_l, c.water.gamma_chuva) == (8.0, 0.0005, 3.0)
-    assert (c.plants.e_stack, c.plants.p_sol, c.plants.p_chuva) == (25.0, 0.004, 0.0015)
+    assert (c.plants.e_stack, c.plants.p_sol, c.plants.p_chuva) == (25.0, 0.012, 0.0015)
     assert (c.creatures.omega_max, c.creatures.k_inertia) == (0.2, 3.0)
     assert (c.sensors.r_vis, c.sensors.k_olf_water, c.sensors.s_min) == (40.0, 2.0, 0.8)
     assert (c.metabolism.b_0, c.metabolism.rho_h, c.metabolism.q_drink) == (0.06, 0.3, 4.0)
@@ -330,6 +330,9 @@ def test_invalid_yaml_file(tmp_path: Path) -> None:
         ("curriculum", "phase1_patch_gap", -1, r"phase1_patch_gap must be >= 0"),
         ("lab", "n_seeds", 5, "n_seeds must be >= n_seeds_min"),
         ("lab", "alpha", 2.0, r"lab\.alpha must be in \[0, 1\]"),
+        ("lab", "max_cap_fraction", 1.5, r"lab\.max_cap_fraction must be in \[0, 1\]"),
+        ("lab", "heuristic_forward", 1.5, r"lab\.heuristic_forward must be in \[0, 1\]"),
+        ("lab", "heuristic_turn_gain", -1.0, r"lab\.heuristic_turn_gain must be >= 0"),
     ],
 )
 def test_validation_rules(section: str, key: str, value: object, message: str) -> None:

@@ -297,6 +297,17 @@ class LabConfig:
     t_ckpt: int
     g_ckpt: int
     flush_rows: int
+    max_cap_fraction: float
+    heuristic_thirst_threshold: float
+    heuristic_hunger_threshold: float
+    heuristic_drink_until: float
+    heuristic_reproduce_energy: float
+    heuristic_reproduce_hydration: float
+    heuristic_crowding_limit: float
+    heuristic_forward: float
+    heuristic_turn_gain: float
+    heuristic_explore_turn: float
+    heuristic_memory_step: float
 
 
 @dataclass(frozen=True, slots=True)

@@ -246,7 +246,14 @@ def _check_lab(lab: LabConfig, errors: Errors) -> None:
     errors += _positive(lab, "lab", "n_seeds", "n_seeds_min", "n_val", "n_test", "g_val")
     errors += _positive(lab, "lab", "n_bootstrap", "ledger_tolerance", "t_log", "t_ckpt")
     errors += _positive(lab, "lab", "g_ckpt", "flush_rows")
-    errors += _unit_interval(lab, "lab", "alpha", "immobile_death_fraction")
+    errors += _unit_interval(lab, "lab", "alpha", "immobile_death_fraction", "max_cap_fraction")
+    errors += _unit_interval(lab, "lab", "heuristic_thirst_threshold", "heuristic_hunger_threshold")
+    errors += _unit_interval(
+        lab, "lab", "heuristic_reproduce_energy", "heuristic_reproduce_hydration"
+    )
+    errors += _unit_interval(lab, "lab", "heuristic_forward", "heuristic_explore_turn")
+    errors += _unit_interval(lab, "lab", "heuristic_drink_until", "heuristic_crowding_limit")
+    errors += _non_negative(lab, "lab", "heuristic_turn_gain", "heuristic_memory_step")
     _require(errors, lab.n_seeds >= lab.n_seeds_min, "lab.n_seeds must be >= n_seeds_min (§10.3)")
 
 

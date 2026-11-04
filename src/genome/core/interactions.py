@@ -45,8 +45,8 @@ def resolve_eating(
     wants = outputs[:, OUTPUT_EAT] > config.metabolism.eat_threshold
     if not np.any(wants):
         return gain
-    plant_slots = plants.pool.active()
-    rows, claimed = _claim_nearest_plants(view, wants, plants, plant_slots)
+    plant_slots, tree = plants.live_tree(view.size)
+    rows, claimed = _claim_nearest_plants(view, wants, plants.position[plant_slots], tree)
     room = (view.e_max[rows] - view.energy[rows]) / config.plants.e_stack
     kleiber = view.mass[rows] ** config.metabolism.kleiber_exponent
     demand = np.minimum(config.metabolism.q_eat * kleiber, room)
@@ -91,14 +91,12 @@ def resolve_drinking(
 
 
 def _claim_nearest_plants(
-    view: CreatureView, wants: npt.NDArray[np.bool_], plants: PlantState, plant_slots: IntArray
+    view: CreatureView, wants: npt.NDArray[np.bool_], position: FloatArray, tree: cKDTree
 ) -> tuple[IntArray, IntArray]:
     """Rows that reach a plant, and the nearest one; ties go to the lowest ID (§7.3).
 
-    ``plant_slots`` is in identifier order, so a lower target row is a lower ID.
+    ``position`` is in identifier order, so a lower target row is a lower ID.
     """
-    position = plants.position[plant_slots]
-    tree = cKDTree(position, boxsize=np.array(view.size))
     pairs = find_pairs(view, tree, position, float(view.touch_radius[wants].max()))
     keep = wants[pairs.observer] & (pairs.distance <= view.touch_radius[pairs.observer])
     observer, target, distance = pairs.observer[keep], pairs.target[keep], pairs.distance[keep]

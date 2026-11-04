@@ -1196,7 +1196,7 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 
 ### 12.6 Estimativas de custo
 
-Estimativas grosseiras, a confirmar com profiling na fase F2 do roadmap.
+Estimativas grosseiras, a confirmar com profiling na fase F2 do roadmap. A primeira medição, na F1 (`scripts/bench.py`, com controlador heurístico e sem o custo de avaliar redes), deu ~6,4 ms por tick com 200 criaturas e ~18 ms com 600, de 2 a 4 vezes acima da primeira linha da tabela. Os sensores somam de 60% a 80% do tick.
 
 | Cenário | Por tick | Total |
 | --- | --- | --- |

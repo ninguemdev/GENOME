@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
+from scipy.spatial import cKDTree
 
 from genome.core.body import Bodies
 from genome.core.state_hash import NamedArray
@@ -111,6 +112,7 @@ class PlantState:
         self.position: FloatArray = np.zeros((capacity, 2), dtype=np.float64)
         self.biomass: FloatArray = np.zeros(capacity, dtype=np.float64)
         self.hops: IntArray = np.full(capacity, UNIRRIGATED, dtype=np.int64)
+        self._live_tree: tuple[IntArray, cKDTree] | None = None
 
     def add(self, position: FloatArray, biomass: FloatArray, hops: IntArray) -> IntArray:
         """Insert plants in the given order, so identifiers follow it; return their slots."""
@@ -118,6 +120,7 @@ class PlantState:
         self.position[slots] = position
         self.biomass[slots] = biomass
         self.hops[slots] = hops
+        self._live_tree = None
         return slots
 
     def remove(self, slots: IntArray) -> None:
@@ -125,6 +128,17 @@ class PlantState:
         self.pool.release(slots)
         self.biomass[slots] = 0.0
         self.hops[slots] = UNIRRIGATED
+        self._live_tree = None
+
+    def live_tree(self, size: tuple[float, float]) -> tuple[IntArray, cKDTree]:
+        """Live slots in identifier order and their spatial tree, row by row (§12.5).
+
+        Plants never move, so the tree is rebuilt only when the set of plants changes.
+        """
+        if self._live_tree is None:
+            slots = self.pool.active()
+            self._live_tree = (slots, cKDTree(self.position[slots], boxsize=np.array(size)))
+        return self._live_tree
 
     def named_arrays(self) -> list[NamedArray]:
         """Arrays that define the plant state, for ``state_hash``."""

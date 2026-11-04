@@ -242,6 +242,9 @@ U_{t+1} = U_t + (U^* - U_t)\left(1 - e^{-1/\tau_U}\right), \qquad U^* = \begin{c
 | `w_rio` | 8 | Largura dos rios |
 | `v_corr_max` | 0,3 | Correnteza no centro do rio (unidades/tick) |
 | `s_rio` | 4 | Espaçamento da amostragem dos rios |
+| `river_harmonics` | 3 | Harmônicos do meandro periódico dos rios (ADR 0004) |
+| `river_amplitude` | 16 | Amplitude máxima do 1º harmônico; o k-ésimo vai até `river_amplitude`/k |
+| `river_vertex_step` | 1 | Passo da linha poligonal ao longo do eixo do rio |
 | `V_max` | 1000 a 5000 | Faixa sorteada do volume máximo dos lagos |
 | `rho_L` | 0,0005 | Regeneração do lago por tick, como fração de V\_max |
 | `gamma_chuva` | 3 | Multiplicador da regeneração na chuva |

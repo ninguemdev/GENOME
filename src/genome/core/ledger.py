@@ -5,6 +5,7 @@ simulation error: in debug mode the run stops at the first one; otherwise it is
 reported for the telemetry to record as an alert.
 """
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -118,7 +119,13 @@ def measure_stocks(
 
 
 def relative_error(before: float, after: float, inflow: float, outflow: float) -> float:
-    """|Δstock − (in − out)|, relative to the largest quantity involved (§7.6)."""
+    """|Δstock − (in − out)|, relative to the largest quantity involved (§7.6).
+
+    A quantity that is not finite gives an infinite error. NaN would pass silently,
+    because every comparison with it is false.
+    """
+    if not all(math.isfinite(value) for value in (before, after, inflow, outflow)):
+        return math.inf
     scale = max(MIN_ERROR_SCALE, abs(before), abs(after), abs(inflow), abs(outflow))
     return abs(after - before - (inflow - outflow)) / scale
 

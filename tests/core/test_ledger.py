@@ -1,4 +1,5 @@
 import dataclasses
+import math
 
 import pytest
 from hypothesis import given
@@ -75,6 +76,16 @@ def test_normal_mode_only_reports_the_deviation(config: GenomeConfig) -> None:
     balance = close_balances(Stocks(100.0, 200.0), Stocks(101.0, 200.0), NO_FLOWS, config.lab)
     assert balance.energy_error > config.lab.ledger_tolerance
     assert balance.water_error == 0.0
+
+
+@pytest.mark.parametrize("bad", [math.nan, math.inf])
+def test_a_quantity_that_is_not_finite_never_closes(config: GenomeConfig, bad: float) -> None:
+    """NaN compares false with everything, so it must not reach a comparison as NaN."""
+    assert relative_error(bad, 1.0, 0.0, 0.0) == math.inf
+    assert relative_error(1.0, 1.0, bad, 0.0) == math.inf
+    lab = dataclasses.replace(config.lab, ledger_debug=True)
+    with pytest.raises(LedgerError):
+        close_balances(Stocks(bad, 200.0), Stocks(100.0, 200.0), NO_FLOWS, lab)
 
 
 def test_rounding_passes_in_debug_mode(config: GenomeConfig) -> None:

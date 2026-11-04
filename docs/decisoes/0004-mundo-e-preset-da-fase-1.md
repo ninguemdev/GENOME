@@ -7,7 +7,7 @@
 
 ## Contexto
 
-A F1 implementa o mundo e o ecossistema com controladores fixos. Várias regras da ARQUITETURA descrevem o resultado esperado sem fixar o algoritmo, e o critério de saída da fase (10 000 ticks com reprodução clonal) não cabe em nenhum dos presets de §12.1: o treino exige `max_ticks = t_max = 2000`, e o modo contínuo aplica mutação a todo nascimento (§8.7), o que só existe a partir da F3. As escolhas 1 a 4 foram confirmadas pelo usuário.
+A F1 implementa o mundo e o ecossistema com controladores fixos. Várias regras da ARQUITETURA descrevem o resultado esperado sem fixar o algoritmo, e o critério de saída da fase (10 000 ticks com reprodução clonal) não cabe em nenhum dos presets de §12.1: o treino exige `max_ticks = t_max = 2000`, e o modo contínuo aplica mutação a todo nascimento (§8.7), o que só existe a partir da F3. As escolhas 1 a 4 foram confirmadas pelo usuário, e as escolhas 5 a 8, no plano do bloco 3 da F1.
 
 ## Decisão
 

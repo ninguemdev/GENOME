@@ -86,7 +86,7 @@ As setas indicam quem chama quem. O núcleo não depende de nenhum outro pacote 
 | `action_space(a)` | `Box(shape=(7,))`, mínimos `[−1, −1, −1, 0, 0, 0, 0]`, máximos `1` (6.2). |
 | `reset(seed, options)` | `seed` é a seed raiz. `options`: `mode`, `split` (`train`, `val`, `test`), `generation`, `world_index`, `founders` (genomas) ou `controller`. Devolve `(observations, infos)`. |
 | `step(actions)` | Devolve `observations, rewards, terminations, truncations, infos`. |
-| `render()` | Delegado a `genome.viz`. |
+| `render()` | Delegado a `genome.viz` (ADR 0010). |
 | `state()` | Snapshot global do mundo, para inspeção. |
 
 **Semântica do passo:**
@@ -1116,14 +1116,14 @@ Um grupo de genomas de uma espécie (padrão: os 5 melhores), para povoar um eco
 
 Os escritores acumulam linhas em memória e gravam a cada 10 000. A tabela `events` sozinha reconstrói a genealogia completa.
 
-Uma linha de `ticks` resume os `T_log` ticks até ela: `births` e `deaths` somam o intervalo, os erros de balanço guardam o pior valor dele e o resto é o estado no fim do tick. Fundadores são eventos `birth` no tick 0, sem pais. Durante a execução, as tabelas ficam em blocos separados, unidos no arquivo final quando ela termina (ADR 0009).
+Uma linha de `ticks` resume os `T_log` ticks até ela: `births` e `deaths` somam o intervalo, os erros de balanço guardam o pior valor dele e o resto é o estado no fim do tick. Fundadores são eventos `birth` no tick 0, sem pais. Durante a execução, as tabelas ficam em blocos separados, unidos no arquivo final quando ela termina (ADR 0009). Os blocos só são apagados depois de o manifesto registrar o fim (ADR 0010).
 
 ### 11.6 Checkpoints
 
 - **Conteúdo:** arrays do núcleo (criaturas, plantas, água, clima, tick), genomas vivos, estado de cada fluxo aleatório (`bit_generator.state`), estado do NEAT (espécies, δ, contadores de estagnação, geração, fase) e totais dos balanços.
 - **Frequência:** a cada `T_ckpt` ticks no contínuo e a cada `G_ckpt` gerações no treino.
 - **Garantia:** retomar de um checkpoint produz exatamente o mesmo resultado que a execução direta (teste em 2.5).
-- **Organização (ADR 0009):** cada checkpoint é um diretório `checkpoints/checkpoint_<tick>/`, gravado à parte e renomeado no fim. Até existirem gerações (F4), a frequência segue `T_ckpt` em qualquer modo.
+- **Organização (ADR 0009):** cada checkpoint é um diretório `checkpoints/checkpoint_<tick>/`, gravado à parte e renomeado no fim. Até existirem gerações (F4), a frequência segue `T_ckpt` em qualquer modo. Retomar de um checkpoint apaga os posteriores a ele (ADR 0010).
 
 ### 11.7 Manifesto
 
@@ -1205,6 +1205,8 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 ### 12.6 Estimativas de custo
 
 Estimativas grosseiras, a confirmar com profiling na fase F2 do roadmap. A primeira medição, na F1 (`scripts/bench.py`, com controlador heurístico e sem o custo de avaliar redes), deu ~6,4 ms por tick com 200 criaturas e ~17 ms com 600, de 2 a 4 vezes acima da primeira linha da tabela. Os sensores somam de 60% a 80% do tick.
+
+**Medição da F2** (`docs/relatorios/desempenho-f2.md`, i5-13400, um processo, controlador heurístico, sem redes): ~7,2 ms por tick com 200 fundadores, ~15,8 ms com 600 e ~30,9 ms com 1000 em 512 × 512. É de ~2 a ~8 vezes a tabela abaixo, conforme o cenário; ela segue como a estimativa original; o relatório refaz as contas de prazo, e otimizar ou aceitar esses prazos é uma decisão a tomar antes da F3.
 
 | Cenário | Por tick | Total |
 | --- | --- | --- |

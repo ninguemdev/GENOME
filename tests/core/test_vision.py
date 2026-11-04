@@ -35,7 +35,7 @@ def see(
     config: GenomeConfig, state: CreatureState, plants: PlantState, light: float = 1.0
 ) -> np.ndarray:
     scene = scene_of(config, state, plants, light)
-    return vision_channels(scene, dry_world(config.water), light, config)
+    return vision_channels(scene, dry_world(config.water), config)
 
 
 def at_angle(origin: Point, degrees: float, distance: float) -> Point:
@@ -109,7 +109,7 @@ def test_edge_window_computed_by_hand(config: GenomeConfig) -> None:
 def signals_of(
     config: GenomeConfig, theta: np.ndarray, distance: np.ndarray, kernel: Any = retina_signals
 ) -> tuple[np.ndarray, np.ndarray]:
-    retina = make_retina(1.0, config.sensors)
+    retina = make_retina(vision_radius(1.0, config.sensors), config.sensors)
     limits = np.array((retina.radius, retina.fov, retina.edge))
     observer = np.zeros(theta.size, dtype=np.int64)
     result: tuple[np.ndarray, np.ndarray] = kernel(
@@ -132,7 +132,7 @@ def test_receptors_fade_to_zero_at_the_border(config: GenomeConfig) -> None:
 
 
 def test_retina_kernel_matches_the_formula_and_its_python_version(config: GenomeConfig) -> None:
-    retina = make_retina(1.0, config.sensors)
+    retina = make_retina(vision_radius(1.0, config.sensors), config.sensors)
     theta = np.radians(np.linspace(-179.0, 179.0, 359))
     distance = np.linspace(0.0, 45.0, 359)
     kept, signals = signals_of(config, theta, distance)
@@ -277,7 +277,7 @@ def water_channel(
 ) -> np.ndarray:
     water = pond_world(config.water, lake, puddle)
     scene = scene_of(config, state, make_plants([]))
-    channel: np.ndarray = vision_channels(scene, water, 1.0, config)[0][DRINK:DENSITY]
+    channel: np.ndarray = vision_channels(scene, water, config)[0][DRINK:DENSITY]
     return channel
 
 
@@ -294,7 +294,7 @@ def test_half_lake_weighs_and_shrinks(config: GenomeConfig) -> None:
     water = pond_world(config.water, (75.0, 50.0), None)
     water.lakes.volume[0] = 200.0
     scene = scene_of(config, state, make_plants([]))
-    channel = vision_channels(scene, water, 1.0, config)[0][DRINK:DENSITY]
+    channel = vision_channels(scene, water, config)[0][DRINK:DENSITY]
     d = 25.0 - 5.0 / math.sqrt(2.0)
     assert_allclose(channel[2], 0.5 * (1.0 - d / 40.0) * FOVEA_AHEAD)
 
@@ -310,7 +310,7 @@ def test_empty_lake_and_empty_puddle_are_not_seen(config: GenomeConfig) -> None:
     water = pond_world(config.water, (60.0, 50.0), (65.0, 50.0))
     water.lakes.volume[0] = 0.0
     scene = scene_of(config, state, make_plants([]))
-    assert_allclose(vision_channels(scene, water, 1.0, config), 0.0)
+    assert_allclose(vision_channels(scene, water, config), 0.0)
 
 
 def test_puddle_weight_computed_by_hand(config: GenomeConfig) -> None:
@@ -319,7 +319,7 @@ def test_puddle_weight_computed_by_hand(config: GenomeConfig) -> None:
     water = pond_world(config.water, None, (71.5, 50.0))
     water.puddles.volume[0] = config.water.v_p / 4
     scene = scene_of(config, state, make_plants([]))
-    channel = vision_channels(scene, water, 1.0, config)[0][DRINK:DENSITY]
+    channel = vision_channels(scene, water, config)[0][DRINK:DENSITY]
     assert_allclose(channel[2], 0.25 * 0.5 * FOVEA_AHEAD)
 
 
@@ -327,7 +327,7 @@ def test_river_is_seen_at_the_bank_of_its_samples(config: GenomeConfig) -> None:
     """Samples every 4 units on y = 50, bank at 4 units from the centre line (§3.2)."""
     state = make_creatures(config, [(48.0, 30.0)], headings=[math.pi / 2])
     scene = scene_of(config, state, make_plants([]))
-    channel = vision_channels(scene, river_world(config.water), 1.0, config)[0][DRINK:DENSITY]
+    channel = vision_channels(scene, river_world(config.water), config)[0][DRINK:DENSITY]
     # Receptor 3 peaks at −10°: the sample 4 units aside, at θ = −atan(4/20), wins over
     # the one straight ahead, and both are seen at their distance to the bank.
     theta = math.degrees(math.atan2(4.0, 20.0))
@@ -340,13 +340,13 @@ def test_river_sample_within_the_radius_only_by_its_bank(config: GenomeConfig) -
     """Centre line at 42 units, beyond r_vis = 40, but the bank is at 38 (§5.2)."""
     state = make_creatures(config, [(48.0, 8.0)], headings=[math.pi / 2])
     scene = scene_of(config, state, make_plants([]))
-    channel = vision_channels(scene, river_world(config.water), 1.0, config)[0][DRINK:DENSITY]
+    channel = vision_channels(scene, river_world(config.water), config)[0][DRINK:DENSITY]
     assert channel.max() > 0.0
 
 
 def test_no_creatures_gives_an_empty_result(config: GenomeConfig) -> None:
     scene = scene_of(config, make_creatures(config, []), make_plants([(1.0, 1.0)]))
-    assert vision_channels(scene, river_world(config.water), 1.0, config).shape == (0, 24)
+    assert vision_channels(scene, river_world(config.water), config).shape == (0, 24)
 
 
 def test_creature_pairs_exclude_self(config: GenomeConfig) -> None:

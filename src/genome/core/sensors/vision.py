@@ -114,14 +114,14 @@ def vision_radius(light: float, sensors: SensorConfig) -> float:
     return sensors.r_vis * (sensors.m_noite + (1.0 - sensors.m_noite) * light)
 
 
-def make_retina(light: float, sensors: SensorConfig) -> Retina:
-    """The retina of a tick with light ``light`` (§5.2)."""
+def make_retina(radius: float, sensors: SensorConfig) -> Retina:
+    """The retina of a tick whose vision radius is ``radius`` (§5.2)."""
     return Retina(
         mu=np.array(sensors.receptor_mu_rad, dtype=np.float64),
         sigma=np.array(sensors.receptor_sigma_rad, dtype=np.float64),
         fov=sensors.fov_half_rad,
         edge=sensors.edge_window_rad,
-        radius=vision_radius(light, sensors),
+        radius=radius,
     )
 
 
@@ -131,14 +131,14 @@ def color_similarity(a: FloatArray, b: FloatArray) -> FloatArray:
     return 1.0 - 2.0 * np.minimum(delta, 1.0 - delta)
 
 
-def vision_channels(scene: Scene, water: Water, light: float, config: GenomeConfig) -> FloatArray:
+def vision_channels(scene: Scene, water: Water, config: GenomeConfig) -> FloatArray:
     """The 24 visual inputs: food, water, density and affinity (§5.2, §5.5).
 
     Returns:
         Shape ``(n, CHANNELS * RECEPTORS)``, in the order of §5.5.
     """
     view = scene.view
-    retina = make_retina(light, config.sensors)
+    retina = make_retina(scene.vision_radius, config.sensors)
     food = np.zeros((view.count, RECEPTORS))
     _raise_channel(food, view, scene.plant_pairs, _plant_weights(scene, config), retina)
     density, affinity = _creature_channels(scene, retina)
@@ -147,6 +147,7 @@ def vision_channels(scene: Scene, water: Water, light: float, config: GenomeConf
 
 
 def _plant_weights(scene: Scene, config: GenomeConfig) -> FloatArray:
+    """Weight W_i / W_max of the plant of each pair, b / b_max (§5.2)."""
     weights: FloatArray = scene.plant_biomass[scene.plant_pairs.target] / config.plants.b_max
     return weights
 

@@ -140,6 +140,7 @@ class SmellFields:
         return water.rivers.contains(points).astype(np.float64).reshape(nx, ny)
 
     def _smooth(self, field: FloatArray) -> FloatArray:
+        """Gaussian filter with toroidal borders (§5.3)."""
         smoothed: FloatArray = gaussian_filter(field, sigma=self._sigma, mode="wrap")
         return smoothed
 

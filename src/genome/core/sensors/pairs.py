@@ -185,12 +185,14 @@ class Scene:
         plant_biomass: Biomass of the live plants, in identifier order.
         plant_pairs: Creature-plant pairs; targets are rows of ``plant_biomass``.
         creature_pairs: Creature-creature pairs without self pairs.
+        vision_radius: r_vis(t), the single source of the reach of this tick (§5.2).
     """
 
     view: CreatureView
     plant_biomass: FloatArray
     plant_pairs: Pairs
     creature_pairs: Pairs
+    vision_radius: float
 
 
 def build_scene(view: CreatureView, plants: PlantState, vision_radius: float) -> Scene:
@@ -212,6 +214,7 @@ def build_scene(view: CreatureView, plants: PlantState, vision_radius: float) ->
         plant_biomass=plants.biomass[plant_slots],
         plant_pairs=plant_pairs,
         creature_pairs=creature_pairs.select(creature_pairs.observer != creature_pairs.target),
+        vision_radius=vision_radius,
     )
 
 

@@ -60,7 +60,7 @@ def build_observations(
     scene = build_scene(view, environment.plants, vision_radius(light, config.sensors))
     observations = np.column_stack(
         (
-            vision_channels(scene, environment.water, light, config),
+            vision_channels(scene, environment.water, config),
             olfaction_channels(view, environment.smell, config.sensors),
             touch_channels(scene, environment.water, config.sensors.s_min),
             _internal_inputs(view, config.creatures),

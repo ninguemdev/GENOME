@@ -65,6 +65,7 @@ def create_founders(
 def _draw_positions(
     n: int, water: Water, config: GenomeConfig, rng: np.random.Generator
 ) -> FloatArray:
+    """The first ``n`` uniform points on land and away from water (§5.6, ADR 0005)."""
     world = config.world
     accepted = np.zeros((0, 2))
     for _ in range(MAX_BATCHES):

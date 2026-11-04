@@ -16,7 +16,7 @@ from genome.core.protocols import (
     OUTPUT_TURN,
 )
 from genome.core.state import NO_ID, CreatureState, NewCreatures
-from tests.core.worlds import RIVER_Y, SIDE, straight_river
+from tests.core.worlds import RIVER_Y, SIDE, no_rivers, straight_river
 
 FAR_FROM_RIVER = (10.0, 10.0)
 # Walking at most one unit per tick from y = 10, these ticks end before the river bank at y = 46.
@@ -187,6 +187,14 @@ def test_swimming_against_the_current_is_slower(config: GenomeConfig) -> None:
     for _ in range(100):
         step(config, state, slots, command(forward=1.0))
     assert_allclose(state.velocity[slots[0]], [-0.7, 0.0], atol=1e-9)
+
+
+@pytest.mark.parametrize("v_corr_max", [0.0, 0.3])
+def test_world_without_rivers_has_no_current(config: GenomeConfig, v_corr_max: float) -> None:
+    """A valid configuration: the distance to no river is infinite, with no float error."""
+    rivers = no_rivers(v_corr_max=v_corr_max)
+    with np.errstate(all="raise"):
+        assert_allclose(rivers.current(np.array([[10.0, 10.0]])), [[0.0, 0.0]])
 
 
 def test_only_the_given_slots_move(config: GenomeConfig) -> None:

@@ -237,7 +237,9 @@ def test_block_writer_writes_blocks_of_flush_rows(tmp_path: Path) -> None:
         "000000.parquet",
         "000001.parquet",
     ]
-    writer.finish()
+    writer.join()
+    assert (tmp_path / "t.parquet.parts").is_dir()
+    writer.discard_parts()
     assert not (tmp_path / "t.parquet.parts").exists()
     stored = pq.ParquetFile(tmp_path / "t.parquet")
     groups = [stored.metadata.row_group(i).num_rows for i in range(stored.num_row_groups)]
@@ -252,7 +254,7 @@ def test_forced_flushes_do_not_change_the_final_blocks(tmp_path: Path) -> None:
         writer.add(batch(value))
         if value in (0, 4, 5):
             writer.flush()
-    writer.finish()
+    writer.join()
     stored = pq.ParquetFile(tmp_path / "t.parquet")
     groups = [stored.metadata.row_group(i).num_rows for i in range(stored.num_row_groups)]
     assert groups == [4, 4, 2]
@@ -260,7 +262,7 @@ def test_forced_flushes_do_not_change_the_final_blocks(tmp_path: Path) -> None:
 
 
 def test_a_table_without_rows_is_still_a_valid_file(tmp_path: Path) -> None:
-    BlockWriter(tmp_path / "t.parquet", SCHEMA, flush_rows=4).finish()
+    BlockWriter(tmp_path / "t.parquet", SCHEMA, flush_rows=4).join()
     stored = pq.read_table(tmp_path / "t.parquet")
     assert stored.num_rows == 0
     assert stored.schema.equals(SCHEMA)
@@ -273,8 +275,9 @@ def test_rewind_drops_later_parts_and_refuses_missing_ones(tmp_path: Path) -> No
     again = BlockWriter(tmp_path / "t.parquet", SCHEMA, flush_rows=1)
     again.rewind(1)
     again.add(batch(9))
-    again.finish()
+    again.join()
     assert pq.read_table(tmp_path / "t.parquet").column("x").to_pylist() == [0, 9]
+    again.discard_parts()
     with pytest.raises(ValueError, match="expected 2 parts"):
         BlockWriter(tmp_path / "t.parquet", SCHEMA, flush_rows=1).rewind(2)
 
@@ -302,3 +305,15 @@ def test_recorder_state_survives_a_checkpoint(config: GenomeConfig, tmp_path: Pa
     for name in (TICKS_FILE, EVENTS_FILE):
         assert pq.read_table(split_dir / name).equals(pq.read_table(direct_dir / name))
     assert_array_equal(arrays["interval"][:1], np.array([4]))
+
+
+def test_rewind_wants_the_counted_parts_themselves(tmp_path: Path) -> None:
+    """Enough parts by count, but not the first ones, as after a delete cut short."""
+    writer = BlockWriter(tmp_path / "t.parquet", SCHEMA, flush_rows=1)
+    for start in range(3):
+        writer.add(batch(start))
+    (tmp_path / "t.parquet.parts" / "000000.parquet").unlink()
+    again = BlockWriter(tmp_path / "t.parquet", SCHEMA, flush_rows=1)
+    with pytest.raises(ValueError, match="expected 2 parts, found 1"):
+        again.rewind(2)
+    assert len(list((tmp_path / "t.parquet.parts").iterdir())) == 2

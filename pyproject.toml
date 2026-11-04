@@ -67,9 +67,9 @@ strict = true
 files = ["src", "tests"]
 mypy_path = "src"
 
-# Numba ships no type information; its decorators are typed at the call sites.
+# Numba and SciPy ship no type information; they are typed at the call sites.
 [[tool.mypy.overrides]]
-module = ["numba", "numba.*"]
+module = ["numba", "numba.*", "scipy", "scipy.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest

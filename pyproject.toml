@@ -12,6 +12,8 @@ dependencies = [
     "scipy>=1.13",
     "pyyaml>=6.0",
     "numba>=0.60",
+    "pettingzoo>=1.24",
+    "gymnasium>=1.0",
 ]
 
 [dependency-groups]
@@ -67,9 +69,9 @@ strict = true
 files = ["src", "tests", "scripts"]
 mypy_path = "src"
 
-# Numba and SciPy ship no type information; they are typed at the call sites.
+# Numba, SciPy and PettingZoo ship no type information; they are typed at the call sites.
 [[tool.mypy.overrides]]
-module = ["numba", "numba.*", "scipy", "scipy.*"]
+module = ["numba", "numba.*", "scipy", "scipy.*", "pettingzoo", "pettingzoo.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest

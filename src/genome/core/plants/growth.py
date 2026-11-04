@@ -10,7 +10,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
-from scipy.spatial import cKDTree
 
 from genome.core.config import PlantConfig
 from genome.core.space import distance, wrap_positions
@@ -136,8 +135,7 @@ def _spacing_free(
     state: PlantState, points: FloatArray, plants: PlantConfig, size: tuple[float, float]
 ) -> BoolArray:
     """No live plant closer than ``min_spacing_factor · d_p`` (§4.4)."""
-    slots = state.pool.active()
-    tree = cKDTree(state.position[slots], boxsize=np.array(size))
+    _, tree = state.live_tree(size)
     radius = plants.min_spacing_factor * plants.d_p
     counts = tree.query_ball_point(points, r=radius, return_length=True)
     free: BoolArray = np.asarray(counts) == 0

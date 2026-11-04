@@ -1,8 +1,8 @@
 """The environment of a world and its step (ARQUITETURA §2.4 step 8, §3, §4).
 
 The step of tick ``t`` uses the climate of ``t`` (ADR 0004): humidity, lakes,
-puddles, irrigation (every ``T_irr``) and plants, in that order. Every flow of
-water and biomass is returned for the ledger (§7.6).
+puddles, irrigation (every ``T_irr``), plants and smell fields (every ``T_olf``),
+in that order. Every flow of water and biomass is returned for the ledger (§7.6).
 """
 
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from genome.core.plants.growth import PlantWorld, grow_plants
 from genome.core.plants.irrigation import update_irrigation
 from genome.core.plants.placement import place_initial_plants
 from genome.core.rng import WorldStreams
+from genome.core.sensors.olfaction import SmellFields
 from genome.core.state import PlantState
 from genome.core.state_hash import NamedArray
 from genome.core.world.climate import Climate
@@ -41,7 +42,7 @@ class EnvironmentFlows:
 
 @dataclass(eq=False)
 class Environment:
-    """Water, climate and plants of one world (§3, §4).
+    """Water, climate, plants and smell of one world (§3, §4, §5.3).
 
     Attributes:
         config: Run configuration.
@@ -49,6 +50,7 @@ class Environment:
         climate: Rain sequence and humidity.
         plants: Plant table.
         plants_rng: The plants stream (§2.5).
+        smell: Food and water fields read by the nostrils.
     """
 
     config: GenomeConfig
@@ -56,6 +58,7 @@ class Environment:
     climate: Climate
     plants: PlantState
     plants_rng: np.random.Generator
+    smell: SmellFields
 
     @property
     def size(self) -> tuple[float, float]:
@@ -68,6 +71,7 @@ class Environment:
             *self.water.named_arrays(),
             *self.climate.named_arrays(),
             *self.plants.named_arrays(),
+            *self.smell.named_arrays(),
         ]
 
 
@@ -81,8 +85,10 @@ def create_environment(config: GenomeConfig, streams: WorldStreams) -> Environme
     climate = Climate(config.climate, streams.climate)
     plants = PlantState(config.plants.max_plants)
     place_initial_plants(plants, water, config, streams.plants)
-    environment = Environment(config, water, climate, plants, streams.plants)
+    smell = SmellFields(water, config)
+    environment = Environment(config, water, climate, plants, streams.plants, smell)
     update_irrigation(plants, water, config.plants, environment.size)
+    smell.update(plants, water)
     return environment
 
 
@@ -97,6 +103,8 @@ def step_environment(environment: Environment, t: int) -> EnvironmentFlows:
         update_irrigation(environment.plants, water, config.plants, environment.size)
     world = PlantWorld(water=water, size=environment.size, light=climate.light(t), raining=raining)
     plant_flows = grow_plants(environment.plants, world, config.plants, environment.plants_rng)
+    if t % config.sensors.t_olf == 0:
+        environment.smell.update(environment.plants, water)
     return EnvironmentFlows(
         lake_inflow=lake_inflow,
         puddle_filled=puddles.filled,

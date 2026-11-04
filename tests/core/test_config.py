@@ -314,6 +314,7 @@ def test_invalid_yaml_file(tmp_path: Path) -> None:
         ("sensors", "receptor_sigma_deg", [20, 14, 0, 8, 14, 20], "sigma_deg must be > 0"),
         ("sensors", "r_vis", 128, r"r_vis must be < min\(width, height\) / 2"),
         ("sensors", "cell_olf", 5, "multiples of sensors.cell_olf"),
+        ("sensors", "olf_water_subsamples", 0, r"olf_water_subsamples must be > 0"),
         ("metabolism", "rho_h", 1.0, r"rho_h must be in \[0, 1\)"),
         ("metabolism", "f_sen", 1.0, r"f_sen must be in \[0, 1\)"),
         ("neat", "sparse_min_connections", 25, "sparse_min_connections must be in"),

@@ -50,6 +50,11 @@ class Puddles:
         """Current radius r = r_p,max · √(V / V_p) (§3.4)."""
         return self._r_p_max * np.sqrt(self.volume / self._v_p)
 
+    def fill(self) -> FloatArray:
+        """Fraction of each puddle that holds water, V / V_p (§5.2, §5.3)."""
+        fill: FloatArray = self.volume / self._v_p
+        return fill
+
     def update(self, raining: bool, sun: float, water: WaterConfig) -> PuddleFlows:
         """Fill every site to V_p while raining; otherwise evaporate ε_p · I_sol (§3.4)."""
         if raining:
@@ -67,9 +72,10 @@ class Puddles:
 
     def margin_distance(self, points: FloatArray) -> FloatArray:
         """Distance to the nearest existing puddle bank; infinite when all are dry."""
-        margin = np.maximum(0.0, self.site_distance(points) - self.radius())
-        margin = np.where(self.volume > 0.0, margin, np.inf)
-        return margin.min(axis=1, initial=np.inf)
+        wet = np.flatnonzero(self.volume > 0.0)
+        w, h = self._size
+        d = distance(points[:, None, :], self.sites[wet][None, :, :], w, h)
+        return np.maximum(0.0, d - self.radius()[wet]).min(axis=1, initial=np.inf)
 
     def within_max(self, points: FloatArray) -> BoolArray:
         """Whether each point lies inside the maximum area r_p,max of a site (§4.4)."""

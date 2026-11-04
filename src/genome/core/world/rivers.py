@@ -86,8 +86,10 @@ class Rivers:
     def current(self, points: FloatArray) -> FloatArray:
         """Current v_corr = v_corr_max · (1 − (2 d_c / w_rio)²) · t̂ inside rivers (§3.2)."""
         distance, tangent = self.centerline(points)
-        profile = 1.0 - (2.0 * distance / self.width) ** 2
-        strength = np.where(distance < self.width / 2.0, self.v_corr_max * profile, 0.0)
+        inside = distance < self.width / 2.0
+        strength = np.zeros(points.shape[0], dtype=np.float64)
+        # Only inside: far away the distance may be infinite, and 0 · ∞ is not a number.
+        strength[inside] = self.v_corr_max * (1.0 - (2.0 * distance[inside] / self.width) ** 2)
         return strength[:, None] * tangent
 
     def margin_distance(self, points: FloatArray) -> FloatArray:

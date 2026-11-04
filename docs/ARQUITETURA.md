@@ -126,7 +126,7 @@ A ordem é fixa e faz parte do determinismo. As interações do passo 4 são res
 5. **Metabolismo:** custos, recuperação pela água, perdas de água.
 6. **Mortes:** fome, desidratação, velhice.
 7. **Nascimentos:** inserção dos filhos, que agem a partir do tick seguinte.
-8. **Ambiente:** clima avança para t+1; umidade; lagos; poças; irrigação (a cada `T_irr`); plantas; campos de olfato (a cada `T_olf`).
+8. **Ambiente:** umidade; lagos; poças; irrigação (a cada `T_irr`); plantas; campos de olfato (a cada `T_olf`). Esses sistemas usam o clima do tick t, e o índice do clima avança para t+1 ao fim do passo (ADR 0004).
 9. **Contabilidade e telemetria:** fechamento dos balanços e registro.
 10. **Avanço:** t ← t + 1 e idade de cada criatura + 1.
 
@@ -174,7 +174,7 @@ O vetor entre dois pontos usa sempre a menor imagem toroidal:
 
 ### 3.2 Rios
 
-- **Geometria:** estática, gerada pelo fluxo mundo. Cada rio é uma linha poligonal que atravessa o mapa (passeio com direção suavizada), com largura `w_rio`.
+- **Geometria:** estática, gerada pelo fluxo mundo. Cada rio é uma linha poligonal fechada que atravessa o mapa ao longo de um eixo do toro (meandro periódico, ADR 0004), com largura `w_rio`.
 - **Água:** volume infinito. Criaturas podem entrar e beber livremente.
 - **Correnteza:** campo estático. A direção é a tangente t̂ do segmento mais próximo, no sentido de geração; a intensidade é máxima no centro e zero nas margens:
 
@@ -465,6 +465,7 @@ As velocidades (33–35) são as reais, incluindo inércia e correnteza: com in�
 | `cell_olf` | 4 | Tamanho da célula das grades de olfato |
 | `sigma_olf` | 3 células | Desvio do filtro gaussiano |
 | `T_olf` | 10 | Intervalo de recálculo dos campos (ticks) |
+| `olf_water_subsamples` | 4 | Pontos por lado de célula na fração de água do olfato (ADR 0005) |
 | `alpha_olf` | 45° | Ângulo das narinas |
 | `k_olf_food`, `k_olf_water` | 0,5; 2,0 | Escalas de saturação do olfato |
 | `s_min` | 0,8 | Similaridade de cor mínima para parceiro |

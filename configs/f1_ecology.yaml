@@ -91,6 +91,7 @@ sensors:                            # §5.2 a §5.4, §5.7
   cell_olf: 4
   sigma_olf: 3                      # em células
   t_olf: 10
+  olf_water_subsamples: 4           # pontos por lado de célula (ADR 0005)
   alpha_olf_deg: 45
   nostril_body_factor: 2            # δ = 2 · r_c + 1
   nostril_offset: 1

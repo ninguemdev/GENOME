@@ -18,6 +18,15 @@ NUM_OUTPUTS: Final = 7
 #: Identifier of the input layout (§5.5, §11.2).
 SENSOR_MODEL: Final = "genome-v1"
 
+# Column of each output in the array returned by ``Brain.evaluate`` (§6.2).
+OUTPUT_FORWARD: Final = 0
+OUTPUT_LATERAL: Final = 1
+OUTPUT_TURN: Final = 2
+OUTPUT_EAT: Final = 3
+OUTPUT_DRINK: Final = 4
+OUTPUT_REPRODUCE: Final = 5
+OUTPUT_MEMORY: Final = 6
+
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
 

@@ -13,6 +13,7 @@ import numpy.typing as npt
 from scipy.spatial import cKDTree
 
 from genome.core.body import Bodies
+from genome.core.snapshot import SavedArrays, copy_arrays
 from genome.core.state_hash import NamedArray
 
 FloatArray = npt.NDArray[np.float64]
@@ -148,6 +149,12 @@ class PlantState:
             ("plants.biomass", self.biomass),
             ("plants.hops", self.hops),
         ]
+
+    def load_arrays(self, saved: SavedArrays) -> None:
+        """Return to a saved state; the spatial tree is rebuilt when next asked for (§11.6)."""
+        copy_arrays(self.named_arrays(), saved)
+        self.pool.next_id = int(saved["plants.next_id"][0])
+        self._live_tree = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,3 +315,8 @@ class CreatureState:
         )
         own: list[NamedArray] = [(f"creatures.{n}", getattr(self, n)) for n in names]
         return [*self.pool.named_arrays("creatures"), *own]
+
+    def load_arrays(self, saved: SavedArrays) -> None:
+        """Return to a saved state (§11.6)."""
+        copy_arrays(self.named_arrays(), saved)
+        self.pool.next_id = int(saved["creatures.next_id"][0])

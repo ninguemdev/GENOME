@@ -15,6 +15,7 @@ from genome.core.plants.irrigation import update_irrigation
 from genome.core.plants.placement import place_initial_plants
 from genome.core.rng import WorldStreams
 from genome.core.sensors.olfaction import SmellFields
+from genome.core.snapshot import SavedArrays
 from genome.core.state import PlantState
 from genome.core.state_hash import NamedArray
 from genome.core.world.climate import Climate
@@ -73,6 +74,17 @@ class Environment:
             *self.plants.named_arrays(),
             *self.smell.named_arrays(),
         ]
+
+    def load_arrays(self, saved: SavedArrays) -> None:
+        """Return to a saved state (§11.6); water goes first, because it checks the world.
+
+        Raises:
+            ValueError: If the snapshot belongs to another world.
+        """
+        self.water.load_arrays(saved)
+        self.climate.load_arrays(saved)
+        self.plants.load_arrays(saved)
+        self.smell.load_arrays(saved)
 
 
 def create_environment(config: GenomeConfig, streams: WorldStreams) -> Environment:

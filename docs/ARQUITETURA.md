@@ -1116,15 +1116,20 @@ Um grupo de genomas de uma espécie (padrão: os 5 melhores), para povoar um eco
 
 Os escritores acumulam linhas em memória e gravam a cada 10 000. A tabela `events` sozinha reconstrói a genealogia completa.
 
+Uma linha de `ticks` resume os `T_log` ticks até ela: `births` e `deaths` somam o intervalo, os erros de balanço guardam o pior valor dele e o resto é o estado no fim do tick. Fundadores são eventos `birth` no tick 0, sem pais. Durante a execução, as tabelas ficam em blocos separados, unidos no arquivo final quando ela termina (ADR 0009).
+
 ### 11.6 Checkpoints
 
 - **Conteúdo:** arrays do núcleo (criaturas, plantas, água, clima, tick), genomas vivos, estado de cada fluxo aleatório (`bit_generator.state`), estado do NEAT (espécies, δ, contadores de estagnação, geração, fase) e totais dos balanços.
 - **Frequência:** a cada `T_ckpt` ticks no contínuo e a cada `G_ckpt` gerações no treino.
 - **Garantia:** retomar de um checkpoint produz exatamente o mesmo resultado que a execução direta (teste em 2.5).
+- **Organização (ADR 0009):** cada checkpoint é um diretório `checkpoints/checkpoint_<tick>/`, gravado à parte e renomeado no fim. Até existirem gerações (F4), a frequência segue `T_ckpt` em qualquer modo.
 
 ### 11.7 Manifesto
 
 Cada execução grava `manifest.yaml` com: configuração completa e `config_hash`; `seed_raiz` e `seed_laboratorio`; versão do protocolo; commit do repositório e indicação de alterações não commitadas; versões de Python, NumPy, SciPy, Numba e PettingZoo; sistema e CPU; horários de início e fim; desfecho (`completed`, `extinction`, `interrupted`); divergências de importação.
+
+O manifesto nasce com o desfecho `interrupted`, que só o fim da execução substitui. Ele também registra o controlador e cada retomada, com tick, horário e commit (ADR 0009).
 
 ### 11.8 Parâmetros
 

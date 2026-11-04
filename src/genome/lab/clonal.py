@@ -11,6 +11,18 @@ from genome.lab.controllers import FixedGenome
 NOT_YET = "this genome operator arrives with NEAT in F3"
 
 
+class FixedGenomeCodec:
+    """``GenomeCodec`` of checkpoints: the genome of a fixed controller has no content (§11.6)."""
+
+    def encode(self, genome: FixedGenome) -> dict[str, object]:
+        """Nothing to write."""
+        return {}
+
+    def decode(self, data: object) -> FixedGenome:
+        """The only genome there is."""
+        return FixedGenome()
+
+
 class ClonalOperators:
     """``GenomeOperators`` of a world where every birth is an exact clone."""
 

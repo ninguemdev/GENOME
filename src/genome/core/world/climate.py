@@ -13,6 +13,7 @@ import numpy.typing as npt
 
 from genome.core.config import ClimateConfig
 from genome.core.kernels import jit
+from genome.core.snapshot import SavedArrays
 from genome.core.state_hash import NamedArray
 
 BoolArray = npt.NDArray[np.bool_]
@@ -93,6 +94,11 @@ class Climate:
             ("climate.rain", self._rain),
             ("climate.humidity", np.array([self.humidity], dtype=np.float64)),
         ]
+
+    def load_arrays(self, saved: SavedArrays) -> None:
+        """Return to a saved state; the rain computed so far has its own length (§11.6)."""
+        self._rain = saved["climate.rain"].astype(np.bool_)
+        self.humidity = float(saved["climate.humidity"][0])
 
     def _extend(self) -> None:
         c = self._config

@@ -12,6 +12,7 @@ from scipy.ndimage import gaussian_filter
 from genome.core.config import GenomeConfig, SensorConfig
 from genome.core.kernels import jit
 from genome.core.sensors.pairs import CreatureView
+from genome.core.snapshot import SavedArrays, copy_arrays
 from genome.core.space import wrap_positions
 from genome.core.state import PlantState
 from genome.core.state_hash import NamedArray
@@ -119,6 +120,10 @@ class SmellFields:
     def named_arrays(self) -> list[NamedArray]:
         """Arrays that define the fields, for ``state_hash``."""
         return [("smell.food", self.food), ("smell.water", self.water)]
+
+    def load_arrays(self, saved: SavedArrays) -> None:
+        """Return to a saved state (§11.6)."""
+        copy_arrays(self.named_arrays(), saved)
 
     def _stamp(
         self, grid: FloatArray, centers: FloatArray, radii: FloatArray, fill: FloatArray

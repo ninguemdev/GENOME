@@ -22,9 +22,10 @@ from genome.core.metabolism import Income, MetabolismFlows, apply_metabolism
 from genome.core.physics import integrate_locomotion
 from genome.core.protocols import OUTPUT_MEMORY, Brain, GenomeOperators
 from genome.core.reproduction import BirthPlan, plan_births
-from genome.core.rng import WorldStreams
+from genome.core.rng import WorldStreams, set_streams_state, streams_state
 from genome.core.sensors.observation import build_observations
 from genome.core.sensors.pairs import view_creatures
+from genome.core.snapshot import SavedArrays, SimulationSnapshot
 from genome.core.state import CreatureState
 from genome.core.state_hash import NamedArray
 
@@ -85,6 +86,7 @@ class Simulation[G]:
         """
         _require_clonal_training(config)
         self.config = config
+        self._streams = streams
         self.environment = create_environment(config, streams)
         self.state = CreatureState(config.run.max_population)
         self.t = 0
@@ -165,6 +167,54 @@ class Simulation[G]:
             *self.environment.named_arrays(),
             *self.state.named_arrays(),
         ]
+
+    def snapshot(self) -> SimulationSnapshot[G]:
+        """A complete, independent copy of the world, between two ticks (§2.1, §11.6)."""
+        return SimulationSnapshot(
+            arrays=tuple((name, array.copy()) for name, array in self.named_arrays()),
+            streams=streams_state(self._streams),
+            genomes=tuple(
+                (slot, self._operators.clone(self._genome_of(slot)))
+                for slot in self.state.pool.active().tolist()
+            ),
+        )
+
+    def restore(self, snapshot: SimulationSnapshot[G]) -> None:
+        """Return to a snapshot of this same world, so that the run continues as if direct.
+
+        Implements ARQUITETURA §2.1 and §11.6. The streams are rewound in place, because
+        the brain and the plants hold references to them.
+
+        Raises:
+            ValueError: If the snapshot belongs to another world, or its genomes do not
+                match its live creatures.
+        """
+        saved = dict(snapshot.arrays)
+        self._require_same_names(saved)
+        self.environment.load_arrays(saved)
+        for slot in self.state.pool.active().tolist():
+            self._brain.release(slot)
+            self._genomes[slot] = None
+        self.state.load_arrays(saved)
+        self.t = int(saved["tick"][0])
+        self._observed = None
+        set_streams_state(self._streams, snapshot.streams)
+        self._install_genomes(snapshot.genomes)
+
+    def _require_same_names(self, saved: SavedArrays) -> None:
+        own = [name for name, _ in self.named_arrays()]
+        different = sorted(set(own) ^ set(saved))
+        if different:
+            raise ValueError(f"the snapshot does not match this simulation: {different}")
+
+    def _install_genomes(self, genomes: Sequence[tuple[int, G]]) -> None:
+        slots = [slot for slot, _ in genomes]
+        if slots != self.state.pool.active().tolist():
+            raise ValueError("the genomes of the snapshot do not match its live creatures")
+        for slot, genome in genomes:
+            own = self._operators.clone(genome)
+            self._genomes[slot] = own
+            self._brain.assign(slot, own)
 
     def _stocks(self) -> Stocks:
         environment = self.environment

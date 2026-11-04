@@ -130,6 +130,24 @@ def test_save_and_restore_world_streams(config: GenomeConfig) -> None:
     assert stream_draws(rng.restore_streams(state)) == expected
 
 
+def test_set_streams_state_rewinds_the_same_generators(config: GenomeConfig) -> None:
+    streams = rng.training_world_streams(7, 3, 2, config.training)
+    state = rng.streams_state(streams)
+    expected = stream_draws(streams)
+    held_by_a_brain = streams.creatures
+    rng.set_streams_state(streams, state)
+    assert streams.creatures is held_by_a_brain
+    assert stream_draws(streams) == expected
+
+
+def test_set_streams_state_requires_all_streams() -> None:
+    streams = rng.continuous_world_streams(1)
+    state = rng.streams_state(streams)
+    del state["climate"]
+    with pytest.raises(ValueError, match="climate"):
+        rng.set_streams_state(streams, state)
+
+
 def test_state_survives_json_round_trip(config: GenomeConfig) -> None:
     streams = rng.continuous_world_streams(2026)
     streams.plants.integers(0, 100, size=37)

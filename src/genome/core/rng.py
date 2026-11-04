@@ -136,12 +136,21 @@ def restore_generator(state: GeneratorState) -> np.random.Generator:
     Raises:
         ValueError: If the state is not a PCG64 state.
     """
+    generator = np.random.Generator(np.random.PCG64())
+    set_generator_state(generator, state)
+    return generator
+
+
+def set_generator_state(generator: np.random.Generator, state: GeneratorState) -> None:
+    """Rewind an existing generator, so that whoever holds it follows along (§11.6).
+
+    Raises:
+        ValueError: If the state is not a PCG64 state.
+    """
     if state.get("bit_generator") != "PCG64":
         raise ValueError(f"expected a PCG64 state, got {state.get('bit_generator')!r}")
-    bit_generator = np.random.PCG64()
     # NumPy types the setter with a private TypedDict; the PCG64 check above guards it.
-    bit_generator.state = cast(Any, state)
-    return np.random.Generator(bit_generator)
+    generator.bit_generator.state = cast(Any, state)
 
 
 def streams_state(streams: WorldStreams) -> dict[str, GeneratorState]:
@@ -160,16 +169,33 @@ def restore_streams(state: dict[str, GeneratorState]) -> WorldStreams:
     Raises:
         ValueError: If a stream is missing or a state is invalid.
     """
-    expected = ("world", "climate", "plants", "creatures")
-    missing = [name for name in expected if name not in state]
-    if missing:
-        raise ValueError(f"missing stream states: {missing}")
+    _require_all_streams(state)
     return WorldStreams(
         world=restore_generator(state["world"]),
         climate=restore_generator(state["climate"]),
         plants=restore_generator(state["plants"]),
         creatures=restore_generator(state["creatures"]),
     )
+
+
+def set_streams_state(streams: WorldStreams, state: dict[str, GeneratorState]) -> None:
+    """Rewind the four streams in place; brains and plants keep their references (§11.6).
+
+    Raises:
+        ValueError: If a stream is missing or a state is invalid.
+    """
+    _require_all_streams(state)
+    set_generator_state(streams.world, state["world"])
+    set_generator_state(streams.climate, state["climate"])
+    set_generator_state(streams.plants, state["plants"])
+    set_generator_state(streams.creatures, state["creatures"])
+
+
+def _require_all_streams(state: dict[str, GeneratorState]) -> None:
+    expected = ("world", "climate", "plants", "creatures")
+    missing = [name for name in expected if name not in state]
+    if missing:
+        raise ValueError(f"missing stream states: {missing}")
 
 
 def _world_streams(entropy: int, domain: Domain, g: int, k: int) -> WorldStreams:

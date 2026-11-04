@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 
 from genome.core.config import GenomeConfig
+from genome.core.snapshot import SavedArrays, copy_arrays, require_same_arrays
 from genome.core.space import distance
 from genome.core.state_hash import NamedArray
 from genome.core.world.lakes import Lakes
@@ -53,6 +54,25 @@ class Water:
             *self.lakes.named_arrays(),
             *self.puddles.named_arrays(),
         ]
+
+    def load_arrays(self, saved: SavedArrays) -> None:
+        """Return to a saved state; only volumes change, and the geography must match (§11.6).
+
+        Raises:
+            ValueError: If the snapshot belongs to another world.
+        """
+        require_same_arrays(
+            [
+                ("rivers.vertices", self.rivers.vertices),
+                ("lakes.centers", self.lakes.centers),
+                ("lakes.v_max", self.lakes.v_max),
+                ("puddles.sites", self.puddles.sites),
+            ],
+            saved,
+        )
+        copy_arrays(
+            [("lakes.volume", self.lakes.volume), ("puddles.volume", self.puddles.volume)], saved
+        )
 
 
 def generate_water(config: GenomeConfig, rng: np.random.Generator) -> Water:

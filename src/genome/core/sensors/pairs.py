@@ -1,7 +1,8 @@
 """Creature-object pairs generated at once, shared by vision and touch (ARQUITETURA §12.5).
 
-Rows follow identifier order, and pairs are sorted by observer and then target,
-so no sum over pairs depends on the tree or on the slots (§2.5, §7.3).
+Rows follow identifier order. Creature pairs are sorted by observer and target,
+so that the sum of the density channel never depends on the tree or on the slots
+(§2.5, §7.3); every other use of pairs is a maximum or a mark, free of order.
 """
 
 from dataclasses import dataclass
@@ -10,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial import cKDTree
 
-from genome.core.space import displacement
+from genome.core.kernels import jit
 from genome.core.state import CreatureState, PlantState
 
 FloatArray = npt.NDArray[np.float64]
@@ -115,22 +116,64 @@ class Pairs:
         )
 
 
-def find_pairs(view: CreatureView, tree: cKDTree, targets: FloatArray, radius: float) -> Pairs:
-    """All pairs within ``radius``, sorted by observer and target (§12.5).
+def pair_vectors_py(
+    observers: FloatArray,
+    targets: FloatArray,
+    observer: IntArray,
+    target: IntArray,
+    width: float,
+    height: float,
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """Minimum-image vector and length of each pair (§3.1), as in ``space.displacement``."""
+    dx = np.empty(observer.size, dtype=np.float64)
+    dy = np.empty(observer.size, dtype=np.float64)
+    length = np.empty(observer.size, dtype=np.float64)
+    half_w, half_h = width / 2.0, height / 2.0
+    for p in range(observer.size):
+        a, b = observer[p], target[p]
+        wrapped_x = (targets[b, 0] - observers[a, 0] + half_w) % width
+        wrapped_y = (targets[b, 1] - observers[a, 1] + half_h) % height
+        dx[p] = (0.0 if wrapped_x >= width else wrapped_x) - half_w
+        dy[p] = (0.0 if wrapped_y >= height else wrapped_y) - half_h
+        length[p] = np.sqrt(dx[p] * dx[p] + dy[p] * dy[p])
+    return dx, dy, length
+
+
+pair_vectors = jit(pair_vectors_py)
+
+
+def find_pairs(
+    view: CreatureView,
+    tree: cKDTree,
+    targets: FloatArray,
+    radius: float,
+    ordered: bool = False,
+) -> Pairs:
+    """All pairs within ``radius`` (§12.5).
 
     Self pairs are the caller's concern: the tree returns them, and it also keeps
     pairs at distance zero, so a distance test could not tell them apart.
+
+    Args:
+        view: The observers.
+        tree: Spatial tree of ``targets``.
+        targets: Target positions, shape ``(m, 2)``.
+        radius: Query radius.
+        ordered: Sort by observer and target. Sums need it (§2.5); maxima and
+            boolean marks are independent of order and can skip the cost.
     """
     if view.count == 0 or targets.shape[0] == 0:
         empty = np.zeros(0, dtype=np.int64)
         return Pairs(empty, empty, np.zeros(0), np.zeros(0), np.zeros(0))
     found = view.tree.sparse_distance_matrix(tree, radius, output_type="ndarray")
-    order = np.lexsort((found["j"], found["i"]))
-    observer = found["i"][order].astype(np.int64)
-    target = found["j"][order].astype(np.int64)
+    observer = found["i"].astype(np.int64)
+    target = found["j"].astype(np.int64)
+    if ordered:
+        order = np.argsort(observer * targets.shape[0] + target)
+        observer, target = observer[order], target[order]
     width, height = view.size
-    vector = displacement(view.position[observer], targets[target], width, height)
-    return Pairs(observer, target, vector[:, 0], vector[:, 1], np.hypot(vector[:, 0], vector[:, 1]))
+    dx, dy, length = pair_vectors(view.position, targets, observer, target, width, height)
+    return Pairs(observer, target, dx, dy, length)
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +204,9 @@ def build_scene(view: CreatureView, plants: PlantState, vision_radius: float) ->
     plant_tree = cKDTree(plant_position, boxsize=np.array(view.size))
     touch_plant, touch_creature = _touch_reach(view)
     plant_pairs = find_pairs(view, plant_tree, plant_position, max(vision_radius, touch_plant))
-    creature_pairs = find_pairs(view, view.tree, view.position, max(vision_radius, touch_creature))
+    creature_pairs = find_pairs(
+        view, view.tree, view.position, max(vision_radius, touch_creature), ordered=True
+    )
     return Scene(
         view=view,
         plant_biomass=plants.biomass[plant_slots],

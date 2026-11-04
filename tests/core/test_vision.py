@@ -1,23 +1,26 @@
 import math
+from typing import Any
 
 import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
 
 from genome.core.config import GenomeConfig, load_config
-from genome.core.sensors.pairs import find_pairs
+from genome.core.rng import continuous_world_streams
+from genome.core.sensors.pairs import find_pairs, pair_vectors, pair_vectors_py
 from genome.core.sensors.vision import (
     add_by_row_py,
     color_similarity,
     make_retina,
     max_by_row_py,
-    receptor_response,
+    retina_signals,
+    retina_signals_py,
     vision_channels,
     vision_radius,
 )
-from genome.core.space import wrap_positions
+from genome.core.space import displacement, wrap_angle, wrap_positions
 from genome.core.state import CreatureState, PlantState
 from tests.conftest import CONFIGS
 from tests.core.scenes import Point, make_creatures, make_plants, scene_of, view_of
@@ -103,10 +106,67 @@ def test_edge_window_computed_by_hand(config: GenomeConfig) -> None:
     assert_allclose(channels[FOOD + 5], 0.2056, atol=5e-5)
 
 
-def test_receptors_fade_to_zero_at_the_border(config: GenomeConfig) -> None:
+def signals_of(
+    config: GenomeConfig, theta: np.ndarray, distance: np.ndarray, kernel: Any = retina_signals
+) -> tuple[np.ndarray, np.ndarray]:
     retina = make_retina(1.0, config.sensors)
-    response = receptor_response(np.array([retina.fov, -retina.fov]), retina)
-    assert_allclose(response, 0.0)
+    limits = np.array((retina.radius, retina.fov, retina.edge))
+    observer = np.zeros(theta.size, dtype=np.int64)
+    result: tuple[np.ndarray, np.ndarray] = kernel(
+        observer,
+        np.cos(theta),
+        np.sin(theta),
+        distance,
+        np.zeros(1),
+        limits,
+        retina.mu,
+        retina.sigma,
+    )
+    return result
+
+
+def test_receptors_fade_to_zero_at_the_border(config: GenomeConfig) -> None:
+    fov = math.radians(90.0 - 1e-9)
+    _, signals = signals_of(config, np.array([fov, -fov]), np.zeros(2))
+    assert_allclose(signals, 0.0, atol=1e-9)
+
+
+def test_retina_kernel_matches_the_formula_and_its_python_version(config: GenomeConfig) -> None:
+    retina = make_retina(1.0, config.sensors)
+    theta = np.radians(np.linspace(-179.0, 179.0, 359))
+    distance = np.linspace(0.0, 45.0, 359)
+    kept, signals = signals_of(config, theta, distance)
+    kept_py, signals_py = signals_of(config, theta, distance, retina_signals_py)
+    assert_array_equal(kept, kept_py)
+    assert_allclose(signals, signals_py, rtol=1e-14)
+
+    seen = (np.abs(theta) <= retina.fov) & (distance < retina.radius)
+    assert_array_equal(kept, np.flatnonzero(seen))
+    angle = wrap_angle(theta[seen])
+    window = np.minimum(1.0, (retina.fov - np.abs(angle)) / retina.edge)
+    offset = (angle[:, None] - retina.mu) / retina.sigma
+    falloff = 1.0 - distance[seen] / retina.radius
+    assert_allclose(signals, (window * falloff)[:, None] * np.exp(-0.5 * offset * offset))
+
+
+def test_pair_vectors_kernel_matches_space_displacement() -> None:
+    rng = continuous_world_streams(4).creatures
+    a, b = rng.uniform(0.0, SIDE, (200, 2)), rng.uniform(0.0, SIDE, (200, 2))
+    index = np.arange(200, dtype=np.int64)
+    expected = displacement(a, b, SIDE, SIDE)
+    for kernel in (pair_vectors, pair_vectors_py):
+        dx, dy, length = kernel(a, b, index, index, SIDE, SIDE)
+        assert_allclose(np.column_stack((dx, dy)), expected, rtol=1e-12, atol=1e-12)
+        assert_allclose(length, np.hypot(expected[:, 0], expected[:, 1]))
+
+
+def test_creature_pairs_are_sorted_by_observer_and_target(config: GenomeConfig) -> None:
+    """The density sum runs in uid order, whatever order the tree returns pairs in (§7.3)."""
+    points: list[Point] = [(50.0 + 3.0 * i, 50.0 + (i % 3)) for i in range(10)]
+    scene = scene_of(config, make_creatures(config, points), make_plants([]))
+    pairs = scene.creature_pairs
+    keys = list(zip(pairs.observer.tolist(), pairs.target.tolist(), strict=True))
+    assert keys == sorted(keys)
 
 
 def test_behind_is_not_seen(config: GenomeConfig) -> None:
@@ -278,13 +338,11 @@ def test_no_creatures_gives_an_empty_result(config: GenomeConfig) -> None:
     assert vision_channels(scene, river_world(config.water), 1.0, config).shape == (0, 24)
 
 
-def test_pairs_are_sorted_by_observer_and_target(config: GenomeConfig) -> None:
+def test_creature_pairs_exclude_self(config: GenomeConfig) -> None:
     state = make_creatures(config, [(50.0, 50.0), (55.0, 50.0), (45.0, 50.0)])
-    scene = scene_of(config, state, make_plants([(52.0, 50.0), (48.0, 50.0), (50.0, 53.0)]))
-    pairs = scene.plant_pairs
-    keys = list(zip(pairs.observer.tolist(), pairs.target.tolist(), strict=True))
-    assert keys == sorted(keys)
+    scene = scene_of(config, state, make_plants([(52.0, 50.0)]))
     assert not np.any(scene.creature_pairs.observer == scene.creature_pairs.target)
+    assert scene.creature_pairs.observer.size == 6
 
 
 def test_find_pairs_handles_an_empty_view(config: GenomeConfig) -> None:

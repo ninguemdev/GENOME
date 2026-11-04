@@ -32,6 +32,9 @@ water:                              # §3.2 a §3.4, §3.7
   w_rio: 8
   v_corr_max: 0.3
   s_rio: 4
+  river_harmonics: 3                # meandro periódico (ADR 0004)
+  river_amplitude: 16               # amplitude máxima do 1º harmônico
+  river_vertex_step: 1              # passo da linha poligonal
   v_max_min: 1000                   # faixa sorteada de V_max dos lagos
   v_max_max: 5000
   k_r_max: 0.25                     # r_max = k_r_max · √V_max (§3.3)

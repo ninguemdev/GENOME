@@ -60,6 +60,9 @@ class WaterConfig:
     w_rio: float
     v_corr_max: float
     s_rio: float
+    river_harmonics: int
+    river_amplitude: float
+    river_vertex_step: float
     v_max_min: float
     v_max_max: float
     k_r_max: float

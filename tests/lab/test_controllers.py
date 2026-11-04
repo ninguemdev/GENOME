@@ -106,17 +106,19 @@ def test_memory_advances_the_exploration_phase_and_wraps(config: GenomeConfig) -
     assert_allclose(decide(config, inputs(memory=1.0 - step / 2))[OUTPUT_MEMORY], step / 2)
 
 
-def test_steers_to_the_centroid_of_the_food(config: GenomeConfig) -> None:
-    """Only the receptor at +35° sees food: 2 · 35° in radians, limited to 1."""
+def test_steers_to_the_strongest_food(config: GenomeConfig) -> None:
+    """§10.2: the receptor at +35° is the strongest, so 2 · 35° in radians, limited to 1."""
     row = inputs()
     row[0, FOOD + 4] = 0.4
+    row[0, FOOD + 1] = 0.3  # weaker food at −35° does not pull the turn
     assert_allclose(decide(config, row)[OUTPUT_TURN], min(1.0, 2.0 * math.radians(35.0)))
 
 
-def test_symmetric_food_goes_straight(config: GenomeConfig) -> None:
+def test_equally_strong_food_goes_to_the_first_receptor(config: GenomeConfig) -> None:
+    """The tie has no draw and does not leave the creature between two plants."""
     row = inputs()
     row[0, FOOD + 2] = row[0, FOOD + 3] = 0.5
-    assert_allclose(decide(config, row)[OUTPUT_TURN], 0.0, atol=1e-12)
+    assert_allclose(decide(config, row)[OUTPUT_TURN], 2.0 * math.radians(-10.0))
 
 
 def test_turn_is_limited(config: GenomeConfig) -> None:

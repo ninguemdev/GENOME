@@ -323,7 +323,7 @@ Uma planta sem irrigação perde 1/`T_murcha` de biomassa por tick, um stack a c
 | `r_irr` | 6 | Alcance da irrigação direta |
 | `k_max` | 3 | Saltos máximos de irrigação entre plantas |
 | `T_irr` | 10 | Intervalo de recálculo da irrigação (ticks) |
-| `p_sol` | 0,012 | Chance de crescer por tick sob sol pleno (calibrado, ADR 0007) |
+| `p_sol` | 0,016 | Chance de crescer por tick sob sol pleno (calibrado, ADR 0007) |
 | `p_chuva` | 0,0015 | Chance de crescer por tick de dia com chuva |
 | `T_murcha` | 200 | Ticks para perder um stack sem irrigação |
 
@@ -1166,7 +1166,7 @@ Cada execução grava `manifest.yaml` com: configuração completa e `config_has
 | Água de quem forrageia | clima médio 0,079 + movimento 0,031 + conversão 0,014 | \~0,124 H/tick (\~4 recargas por geração) |
 | Esvaziamento relativo | água 0,21%/tick contra energia 0,13%/tick | água \~1,6× mais rápida |
 | Prazo do fundador para achar água | 48 / 0,124 | \~390 ticks |
-| Produção por planta irrigada | 0,55 × (0,75 × 0,012 + 0,25 × 0,0015) × 25 | \~0,129 E/tick |
+| Produção por planta irrigada | 0,55 × (0,75 × 0,016 + 0,25 × 0,0015) × 25 | \~0,170 E/tick |
 | Velocidade ótima de cruzeiro | √(C\_basal / (c\_m · M)) | \~0,82 · v\_max |
 | Distância de frenagem | v · τ | 3 unidades |
 
@@ -1175,7 +1175,7 @@ A velocidade ótima fica no meio da faixa do gene v\_max, não num extremo: a ev
 ### 12.3 Capacidade de suporte
 
 ```latex
-N_{\text{sustentável}} \approx \frac{N_{\text{pp}} \times 0{,}129}{0{,}13} \approx N_{\text{pp}}
+N_{\text{sustentável}} \approx \frac{N_{\text{pp}} \times 0{,}170}{0{,}13} \approx 1{,}3\, N_{\text{pp}}
 ```
 
 N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cercadas não produzem). A fórmula é um ponto de partida para dimensionar rios e lagos; a capacidade real é menor e depende de quanto as criaturas pastam.
@@ -1184,7 +1184,7 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 
 - **Espaço:** uma criatura a cada \~262 unidades², espaçamento médio de \~16 unidades. Os corpos ocupam \~1,2% do mapa.
 - **Visão:** em média \~10 criaturas no campo de visão de dia e \~2,5 à noite, com 3 a 5 vezes mais perto da água.
-- **Comida:** \~1000 plantas produtivas (12.3), num total limitado pela área irrigável. Com 4 rios atravessando o mapa, a faixa irrigável (\~15 unidades de cada margem) soma \~23% da área e comporta \~7900 posições cristalinas, sem contar os lagos.
+- **Comida:** \~770 plantas produtivas (12.3), num total limitado pela área irrigável. Com 4 rios atravessando o mapa, a faixa irrigável (\~15 unidades de cada margem) soma \~23% da área e comporta \~7900 posições cristalinas, sem contar os lagos.
 
 ### 12.5 Estratégias de desempenho
 
@@ -1197,7 +1197,7 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 
 ### 12.6 Estimativas de custo
 
-Estimativas grosseiras, a confirmar com profiling na fase F2 do roadmap. A primeira medição, na F1 (`scripts/bench.py`, com controlador heurístico e sem o custo de avaliar redes), deu ~6,4 ms por tick com 200 criaturas e ~18 ms com 600, de 2 a 4 vezes acima da primeira linha da tabela. Os sensores somam de 60% a 80% do tick.
+Estimativas grosseiras, a confirmar com profiling na fase F2 do roadmap. A primeira medição, na F1 (`scripts/bench.py`, com controlador heurístico e sem o custo de avaliar redes), deu ~6,4 ms por tick com 200 criaturas e ~17 ms com 600, de 2 a 4 vezes acima da primeira linha da tabela. Os sensores somam de 60% a 80% do tick.
 
 | Cenário | Por tick | Total |
 | --- | --- | --- |

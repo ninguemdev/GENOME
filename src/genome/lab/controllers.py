@@ -17,6 +17,7 @@ from genome.core.protocols import (
     OUTPUT_DRINK,
     OUTPUT_EAT,
     OUTPUT_FORWARD,
+    OUTPUT_LATERAL,
     OUTPUT_MEMORY,
     OUTPUT_REPRODUCE,
     OUTPUT_TURN,
@@ -31,6 +32,7 @@ from genome.core.sensors.observation import (
     INPUT_VISION_FOOD,
     INPUT_VISION_WATER,
 )
+from genome.core.sensors.vision import RECEPTORS
 
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
@@ -38,9 +40,8 @@ BoolArray = npt.NDArray[np.bool_]
 
 # Output above every action threshold (§6.2).
 ACT = 1.0
-# Number of movement outputs: forward, lateral and turn (§6.2).
-MOVEMENT_OUTPUTS = 3
-RECEPTORS = 6
+# Columns of the movement outputs, whose range differs from the others (§6.2).
+MOVEMENT_OUTPUTS = (OUTPUT_FORWARD, OUTPUT_LATERAL, OUTPUT_TURN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +83,8 @@ class RandomController(FixedController):
     def evaluate(self, observations: FloatArray, slots: IntArray) -> FloatArray:
         """Movement in ``[-1, 1)``, actions and memory in ``[0, 1)`` (§6.2)."""
         outputs = self._rng.uniform(0.0, 1.0, (slots.size, NUM_OUTPUTS))
-        outputs[:, :MOVEMENT_OUTPUTS] = self._rng.uniform(-1.0, 1.0, (slots.size, MOVEMENT_OUTPUTS))
+        movement = list(MOVEMENT_OUTPUTS)
+        outputs[:, movement] = self._rng.uniform(-1.0, 1.0, (slots.size, len(movement)))
         return outputs
 
 
@@ -134,13 +136,13 @@ class HeuristicController(FixedController):
         return channel
 
     def _turn(self, target: FloatArray, memory: FloatArray) -> FloatArray:
-        """Steer to the centroid of the receptors, or oscillate by the phase in memory."""
+        """Steer to the strongest receptor (§10.2), or oscillate by the phase in memory.
+
+        Ties go to the first receptor, the leftmost one, so the rule has no draw.
+        """
         lab = self._lab
-        total = target.sum(axis=1)
-        seen = total > 0.0
-        direction = np.zeros(total.size, dtype=np.float64)
-        direction[seen] = (target[seen] @ self._mu) / total[seen]
+        direction = self._mu[np.argmax(target, axis=1)]
         steer = np.clip(lab.heuristic_turn_gain * direction, -1.0, 1.0)
         explore = lab.heuristic_explore_turn * np.sin(2.0 * math.pi * memory)
-        turn: FloatArray = np.where(seen, steer, explore)
+        turn: FloatArray = np.where(target.max(axis=1) > 0.0, steer, explore)
         return turn

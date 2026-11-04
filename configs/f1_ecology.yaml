@@ -52,7 +52,7 @@ plants:                             # §4, §4.7, §12.1
   r_irr: 6
   k_max: 3
   t_irr: 10
-  p_sol: 0.012                      # calibrado na F1 (ADR 0007)
+  p_sol: 0.016                      # calibrado na F1 (ADR 0007)
   p_chuva: 0.0015
   t_murcha: 200
   irrigation_hop_factor: 1.1        # salto a até 1,1 · d_p (§4.2)

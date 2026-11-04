@@ -9,24 +9,7 @@ from genome.core.config import GenomeConfig
 from genome.core.rng import continuous_world_streams
 from genome.core.space import displacement
 from genome.core.world.rivers import Rivers, generate_rivers
-
-SIDE = 100.0
-
-
-def straight_river(width: float = 8.0, v_corr_max: float = 0.3) -> Rivers:
-    """A horizontal river along y = 50, flowing toward +x, on a 100 × 100 torus."""
-    x = np.arange(100, dtype=np.float64)
-    vertices = np.column_stack((x, np.full(100, 50.0)))
-    index = np.arange(100, dtype=np.int64)
-    return Rivers(
-        vertices=vertices,
-        next_vertex=np.roll(index, -1),
-        prev_vertex=np.roll(index, 1),
-        samples=vertices[::4],
-        width=width,
-        v_corr_max=v_corr_max,
-        size=(SIDE, SIDE),
-    )
+from tests.core.worlds import SIDE, straight_river
 
 
 def test_current_profile_by_hand() -> None:

@@ -20,6 +20,7 @@ from genome.core.config.loader import build_dataclass
 CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 TRAINING = CONFIGS / "training.yaml"
 CONTINUOUS = CONFIGS / "continuous.yaml"
+F1_ECOLOGY = CONFIGS / "f1_ecology.yaml"
 
 
 def raw(path: Path = TRAINING) -> dict[str, Any]:
@@ -74,6 +75,19 @@ def test_continuous_preset_matches_section_12_1(continuous: GenomeConfig) -> Non
     assert (continuous.plants.n_plantas_0, continuous.plants.max_plants) == (2500, 40000)
     assert continuous.run.max_ticks is None
     assert continuous.world.width / continuous.sensors.cell_olf == 128
+
+
+def test_f1_preset_is_training_world_for_ten_thousand_ticks(training: GenomeConfig) -> None:
+    f1 = load_config(F1_ECOLOGY)
+    assert f1.run.mode == "training"
+    assert f1.run.max_ticks == f1.training.t_max == 10_000
+    assert f1.neat.in_world_mutation_rate == 0.0
+    # ADR 0004: everything else is the training preset.
+    assert dataclasses.replace(f1.run, max_ticks=2000) == training.run
+    assert dataclasses.replace(f1.training, t_max=2000) == training.training
+    for field in dataclasses.fields(GenomeConfig):
+        if field.name not in ("run", "training"):
+            assert getattr(f1, field.name) == getattr(training, field.name), field.name
 
 
 def test_presets_differ_only_in_section_12_1(
@@ -290,6 +304,8 @@ def test_invalid_yaml_file(tmp_path: Path) -> None:
         ("climate", "p_sc", 1.5, r"climate\.p_sc must be in \[0, 1\]"),
         ("water", "v_max_min", 6000, r"v_max_min must be <= v_max_max"),
         ("water", "s_rio", 5, r"s_rio must be <= w_rio / 2"),
+        ("water", "river_vertex_step", 5, r"river_vertex_step must be <= s_rio"),
+        ("water", "river_harmonics", 0, r"water.river_harmonics must be > 0"),
         ("plants", "n_plantas_0", 20000, r"n_plantas_0 must be <= max_plants"),
         ("creatures", "mass_min", 3.0, r"mass_min must be <= mass_max"),
         ("creatures", "v_max_min", 2.0, r"v_max_min must be <= v_max_max"),

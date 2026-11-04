@@ -114,9 +114,16 @@ def _check_climate(climate: ClimateConfig, errors: Errors) -> None:
 def _check_water(water: WaterConfig, errors: Errors) -> None:
     errors += _positive(water, "water", "w_rio", "s_rio", "v_max_min", "k_r_max", "v_p")
     errors += _positive(water, "water", "r_p_max", "gamma_chuva")
-    errors += _non_negative(water, "water", "v_corr_max", "rho_l", "eps_p")
+    errors += _positive(water, "water", "river_harmonics", "river_vertex_step")
+    errors += _non_negative(water, "water", "v_corr_max", "rho_l", "eps_p", "river_amplitude")
     _require(errors, water.v_max_min <= water.v_max_max, "water.v_max_min must be <= v_max_max")
     _require(errors, water.s_rio <= water.w_rio / 2, "water.s_rio must be <= w_rio / 2 (§3.2)")
+    # ADR 0004: the polyline must be finer than the perception sampling.
+    _require(
+        errors,
+        water.river_vertex_step <= water.s_rio,
+        "water.river_vertex_step must be <= s_rio (ADR 0004)",
+    )
 
 
 def _check_plants(plants: PlantConfig, errors: Errors) -> None:

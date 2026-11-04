@@ -15,7 +15,7 @@ from genome.core.tick import Simulation
 from genome.lab.controllers import FixedGenome
 from genome.viz.inspector import pick_creature
 from genome.viz.renderer import Click, Command
-from genome.viz.scene import WorldArrays, build_frame
+from genome.viz.scene import WorldArrays, build_frame, live_uids
 
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
@@ -99,17 +99,18 @@ def run_viewer(simulation: Simulation[FixedGenome], screen: ViewerScreen) -> Non
     while state.running:
         for entry in screen.poll():
             state = apply_input(state, entry)
+        if not state.running:
+            break
         for _ in range(ticks_to_run(state)):
             if simulation.finished:
                 break
             simulation.step_batch()
         # A copy: whatever the screen does, it cannot reach the arrays of the world.
         arrays = {name: array.copy() for name, array in simulation.named_arrays()}
-        frame = build_frame(arrays, simulation.config)
         selected = state.selected
         if state.click is not None:
-            selected = pick_creature(frame, state.click)
-        if selected is not None and selected not in frame.uids:
+            selected = pick_creature(build_frame(arrays, simulation.config), state.click)
+        if selected is not None and selected not in live_uids(arrays):
             selected = None
         status = [
             "paused" if state.paused else f"{state.ticks_per_frame} ticks per frame",
@@ -123,7 +124,11 @@ def run_viewer(simulation: Simulation[FixedGenome], screen: ViewerScreen) -> Non
 def _observed(
     simulation: Simulation[FixedGenome], selected: int | None
 ) -> tuple[FloatArray, IntArray] | None:
-    """The inputs of the next tick, only when someone looks; sensors draw nothing (§2.4)."""
+    """A copy of the inputs of the next tick, only when someone looks (§2.4).
+
+    Sensors draw nothing, but the next tick reuses this very array: the screen gets its own.
+    """
     if selected is None:
         return None
-    return simulation.observe()
+    observations, slots = simulation.observe()
+    return observations.copy(), slots.copy()

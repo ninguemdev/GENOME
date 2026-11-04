@@ -326,6 +326,9 @@ def test_state_is_a_copy_for_inspection(config: GenomeConfig) -> None:
 
 def test_render_is_delegated_to_the_injected_renderer(config: GenomeConfig) -> None:
     class Spy:
+        def close(self) -> None:
+            pass
+
         def render(self, state: object) -> str:
             assert "creatures.position" in state  # type: ignore[operator]
             return "drawn"

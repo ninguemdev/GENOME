@@ -89,6 +89,11 @@ def live_slots(arrays: WorldArrays) -> IntArray:
     return active_slots(arrays["creatures.alive"], arrays["creatures.ids"])
 
 
+def live_uids(arrays: WorldArrays) -> IntArray:
+    """Identifiers of the live creatures of a snapshot, in order (§2.5)."""
+    return arrays["creatures.ids"][live_slots(arrays)].astype(np.int64)
+
+
 def build_frame(arrays: WorldArrays, config: GenomeConfig) -> Frame:
     """Read one frame from a snapshot (§2.1)."""
     tick = int(arrays["tick"][0])
@@ -118,7 +123,7 @@ def build_frame(arrays: WorldArrays, config: GenomeConfig) -> Frame:
         puddle_radii=water_radius(water.r_p_max, puddle_volume[wet], water.v_p),
         plant_positions=_floats(arrays, "plants.position")[plants],
         plant_stacks=np.ceil(_floats(arrays, "plants.biomass")[plants]).astype(np.int64),
-        uids=arrays["creatures.ids"][slots].astype(np.int64),
+        uids=live_uids(arrays),
         positions=_floats(arrays, "creatures.position")[slots],
         headings=_floats(arrays, "creatures.heading")[slots],
         body_radii=_floats(arrays, "creatures.body_radius")[slots],

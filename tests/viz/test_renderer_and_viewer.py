@@ -268,7 +268,7 @@ def test_escape_clears_the_selection_and_it_stays_cleared(config: GenomeConfig) 
     screen = ScriptedScreen([[Click(target)], [], [Command.CLEAR_SELECTION], []])
     run_viewer(simulation, screen)
     assert screen.selected[1] is not None
-    assert screen.selected[2:] == [None, None, None]
+    assert screen.selected[2:] == [None, None]
 
 
 def test_the_environment_renders_through_the_renderer(config: GenomeConfig) -> None:
@@ -285,3 +285,85 @@ def test_the_environment_shows_a_window_in_human_mode(config: GenomeConfig) -> N
     env = make_env(small(config), render_mode="human")
     env.reset(seed=3, options={"controller": fixed_controller("immobile")})
     assert env.render() is None
+
+
+def test_the_real_renderer_opens_its_window_and_quits_at_once(
+    config: GenomeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole path of ``scripts/run_viewer.py``: poll comes before the first frame."""
+    chosen = small(config)
+    simulation = make_simulation(chosen, 3, "immobile")
+    screen = WorldRenderer(chosen, "human")
+
+    def ask_to_quit(frames_per_second: int) -> None:
+        pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+    monkeypatch.setattr(screen, "wait", ask_to_quit)
+    run_viewer(simulation, screen)
+    assert pygame.display.get_surface() is not None
+    screen.close()
+    assert pygame.display.get_surface() is None
+    # One tick before the first frame, and none after the person asked to quit.
+    assert simulation.t == 1
+
+
+def test_a_screen_that_changes_what_it_receives_changes_nothing(config: GenomeConfig) -> None:
+    chosen = small(config, ticks=10)
+    direct = make_simulation(chosen, 3, "random")
+    while not direct.finished:
+        direct.step_batch()
+
+    class Vandal(ScriptedScreen):
+        def render(
+            self,
+            state: WorldArrays,
+            selected: int | None = None,
+            observed: tuple[FloatArray, IntArray] | None = None,
+            status: Sequence[str] = (),
+        ) -> None:
+            super().render(state, selected, observed, status)
+            if observed is not None:
+                observed[0][...] = 0.0
+            state["creatures.energy"][...] = 0.0
+
+    watched = make_simulation(chosen, 3, "random")
+    target = watched.state.position[watched.state.pool.active()[0]].copy()
+    screen = Vandal([[Click(target)], *[[] for _ in range(12)]])
+    run_viewer(watched, screen)
+    assert any(screen.observed)
+    assert state_hash(watched.named_arrays()) == state_hash(direct.named_arrays())
+
+
+def test_closing_the_environment_closes_its_window(config: GenomeConfig) -> None:
+    env = make_env(small(config), render_mode="human")
+    env.reset(seed=3, options={"controller": fixed_controller("immobile")})
+    env.render()
+    assert pygame.display.get_surface() is not None
+    env.close()
+    assert pygame.display.get_surface() is None
+
+
+def test_overlapping_lobes_blend_instead_of_erasing_each_other(config: GenomeConfig) -> None:
+    """Straight ahead the two foveal lobes overlap, so both colours must reach the pixel."""
+    chosen = small(config)
+    simulation = make_simulation(chosen, 3, "immobile")
+    arrays = arrays_of(simulation)
+    slot = int(simulation.state.pool.active()[0])
+    uid = int(arrays["creatures.ids"][slot])
+    position = arrays["creatures.position"].copy()
+    heading = arrays["creatures.heading"].copy()
+    position[slot] = (120.0, 120.0)
+    heading[slot] = 0.0
+    moved = {**arrays, "creatures.position": position, "creatures.heading": heading}
+    renderer = WorldRenderer(chosen)
+    scale = WORLD_PIXELS / chosen.world.width
+    pixel = (round(120.0 * scale), round((120.0 + 2.0) * scale) - round(2.0 * scale))
+    near = (pixel[0] + round(4.0 * scale), pixel[1])
+    plain, marked = renderer.render(moved), renderer.render(moved, uid)
+    assert plain is not None
+    assert marked is not None
+    before = plain[near[1], near[0]].astype(np.int64)
+    after = marked[near[1], near[0]].astype(np.int64)
+    # Lobe 3 is yellow and lobe 4 green; over the ground, both raise green above what one does.
+    alone = before + (np.array([110, 220, 120]) - before) * 70 // 255
+    assert after[1] > alone[1]

@@ -140,7 +140,7 @@ def bench(population: int, ticks: int, repeats: int) -> None:
     )
     for label, share in shares(config, ticks).items():
         print(f"  {label:<12} {100.0 * share:5.1f}%  ~{total * share:6.2f} ms")
-    print(f"  with telemetry  {recorded:.2f} ms/tick (+{recorded - total:.2f} ms)")
+    print(f"  with telemetry  {recorded:.2f} ms/tick ({recorded - total:+.2f} ms)")
     print(f"  one frame of the viewer  {frame_cost(config):.2f} ms")
 
 

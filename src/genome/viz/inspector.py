@@ -11,6 +11,7 @@ import numpy.typing as npt
 
 from genome.core.config import GenomeConfig, SensorConfig
 from genome.core.protocols import NUM_INPUTS
+from genome.core.sensors import observation as obs
 from genome.core.sensors.olfaction import nostril_offsets
 from genome.core.sensors.vision import make_retina, retina_signals, vision_radius
 from genome.core.space import distance
@@ -24,21 +25,20 @@ LOBE_SAMPLES = 181
 #: How far from a body, in world units, a click still selects it.
 PICK_REACH = 6.0
 LEFT, RIGHT = -1.0, 1.0
-RECEPTORS = 6
-#: Blocks of the 42 inputs, in the order of §5.5: (label, first index, length).
+#: Blocks of the 42 inputs, in the order of §5.5: (label, first index, one past the last).
 INPUT_BLOCKS = (
-    ("vision food", 0, RECEPTORS),
-    ("vision water", 6, RECEPTORS),
-    ("vision density", 12, RECEPTORS),
-    ("vision affinity", 18, RECEPTORS),
-    ("smell food", 24, 2),
-    ("smell water", 26, 2),
-    ("touch", 28, 3),
-    ("reserves", 31, 2),
-    ("speed", 33, 3),
-    ("maturity, age", 36, 2),
-    ("memory", 38, 1),
-    ("climate", 39, 3),
+    ("vision food", obs.INPUT_VISION_FOOD, obs.INPUT_VISION_WATER),
+    ("vision water", obs.INPUT_VISION_WATER, obs.INPUT_VISION_DENSITY),
+    ("vision density", obs.INPUT_VISION_DENSITY, obs.INPUT_VISION_AFFINITY),
+    ("vision affinity", obs.INPUT_VISION_AFFINITY, obs.INPUT_SMELL_FOOD_INTENSITY),
+    ("smell food", obs.INPUT_SMELL_FOOD_INTENSITY, obs.INPUT_SMELL_WATER_INTENSITY),
+    ("smell water", obs.INPUT_SMELL_WATER_INTENSITY, obs.INPUT_TOUCH_FOOD),
+    ("touch", obs.INPUT_TOUCH_FOOD, obs.INPUT_ENERGY),
+    ("reserves", obs.INPUT_ENERGY, obs.INPUT_SPEED_FORWARD),
+    ("speed", obs.INPUT_SPEED_FORWARD, obs.INPUT_MATURITY),
+    ("maturity, age", obs.INPUT_MATURITY, obs.INPUT_MEMORY),
+    ("memory", obs.INPUT_MEMORY, obs.INPUT_LIGHT),
+    ("climate", obs.INPUT_LIGHT, NUM_INPUTS),
 )
 
 
@@ -178,8 +178,8 @@ def panel_lines(inspection: Inspection) -> list[str]:
     if i.inputs is None:
         return lines
     lines.append("")
-    for label, first, length in INPUT_BLOCKS:
-        values = " ".join(f"{value:+.2f}" for value in i.inputs[first : first + length].tolist())
+    for label, first, end in INPUT_BLOCKS:
+        values = " ".join(f"{value:+.2f}" for value in i.inputs[first:end].tolist())
         lines.append(f"{label}: {values}")
     return lines
 

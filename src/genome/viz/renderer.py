@@ -140,7 +140,12 @@ class WorldRenderer:
         return None
 
     def poll(self) -> list[Command | Click]:
-        """What happened at the window since the last call, in order."""
+        """What happened at the window since the last call, in order.
+
+        Before the first frame there is no window, and so nothing to report.
+        """
+        if self._window is None:
+            return []
         found: list[Command | Click] = []
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -260,15 +265,17 @@ class WorldRenderer:
                 pygame.draw.line(self._canvas, color, shifted, tip)
 
     def _draw_selection(self, inspection: Inspection, frame: Frame) -> None:
-        overlay = pygame.Surface(self._world_size, pygame.SRCALPHA)
         width, height = frame.size
-        for wrap_x in WRAPS:
-            for wrap_y in WRAPS:
-                shift = np.array([wrap_x * width, wrap_y * height], dtype=np.float64)
-                for lobe, color in zip(inspection.lobes, LOBE_COLORS, strict=True):
-                    outline = np.vstack((inspection.position, lobe)) + shift
-                    pygame.draw.polygon(overlay, color, (outline * self._scale).tolist())
-        self._canvas.blit(overlay, (0, 0))
+        for lobe, color in zip(inspection.lobes, LOBE_COLORS, strict=True):
+            # One layer per lobe: on a single layer, each polygon would erase the ones under it.
+            overlay = pygame.Surface(self._world_size, pygame.SRCALPHA)
+            outline = np.vstack((inspection.position, lobe))
+            for wrap_x in WRAPS:
+                for wrap_y in WRAPS:
+                    shift = np.array([wrap_x * width, wrap_y * height], dtype=np.float64)
+                    pixels = (outline + shift) * self._scale
+                    pygame.draw.polygon(overlay, color, pixels.tolist())
+            self._canvas.blit(overlay, (0, 0))
         center = inspection.position.tolist()
         ring = max(MIN_BODY_PIXELS, inspection.body_radius * self._scale) + SELECTION_EXTRA_PIXELS
         for shifted in self._copies(center):

@@ -48,7 +48,7 @@ Os sensores são o gargalo em todos os cenários. Visão e geração de pares so
 | Um quadro do visualizador, sem tela (ms) | 7,91 | 10,30 | 14,38 |
 
 - **Telemetria:** o custo ficou dentro do ruído da medição, com diferenças negativas em dois cenários. Dá para afirmar que ele é pequeno diante do tick, mas não dá para dar um número. Isso inclui gravar os blocos e juntá-los no fim, sem checkpoints.
-- **Visualizador:** cabe nos 33 ms de um quadro a 30 FPS em todos os cenários. Somando o tick, 1000 criaturas a 1 tick por quadro dão ~45 ms, ou ~22 FPS. O quadro foi medido em `rgb_array` e sem criatura selecionada; apresentar em janela real não foi medido.
+- **Visualizador:** cabe nos 33 ms de um quadro a 30 FPS em todos os cenários. Somando o tick, 1000 criaturas a 1 tick por quadro dão ~45 ms, ou ~22 FPS. O quadro foi medido em `rgb_array`, com a cópia dos arrays e sem criatura selecionada. Com seleção ele custa mais, e apresentar em janela real não foi medido.
 
 ## O que isso muda nas estimativas de §12.6
 

@@ -124,3 +124,18 @@ def test_git_output_is_read_as_utf8_whatever_the_codepage(
     monkeypatch.setattr("subprocess.run", fake_run)
     git_state(REPOSITORY)
     assert (seen["encoding"], seen["errors"]) == ("utf-8", "replace")
+
+
+def test_a_run_in_the_repository_itself_hides_no_change(tmp_path: Path) -> None:
+    commit_a_file(tmp_path)
+    assert git_state(tmp_path, tmp_path)["dirty"] is False
+    (tmp_path / "code.txt").write_text("changed", encoding="utf-8")
+    assert git_state(tmp_path, tmp_path)["dirty"] is True
+
+
+def test_changes_outside_a_subfolder_repository_still_count(tmp_path: Path) -> None:
+    commit_a_file(tmp_path)
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    (tmp_path / "code.txt").write_text("changed", encoding="utf-8")
+    assert git_state(inner, inner / "results")["dirty"] is True

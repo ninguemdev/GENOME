@@ -137,7 +137,10 @@ def _pathspec(repository: Path, output: Path | None) -> list[str]:
         inside = output.resolve().relative_to(repository.resolve())
     except ValueError:
         return []
-    return ["--", ".", f":(exclude,literal){inside.as_posix()}"]
+    if not inside.parts:
+        # The run is the repository itself: excluding it would hide every change.
+        return []
+    return ["--", ":/", f":(exclude,literal){inside.as_posix()}"]
 
 
 def _git(repository: Path, *arguments: str) -> str | None:

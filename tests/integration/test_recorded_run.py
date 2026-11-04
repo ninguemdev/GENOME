@@ -167,6 +167,37 @@ def test_a_second_crash_after_returning_to_an_earlier_checkpoint_still_resumes(
     assert_same_tables(direct_dir, crashed_dir)
 
 
+def test_a_crash_while_returning_to_an_earlier_checkpoint_stays_resumable(
+    config: GenomeConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Later checkpoints go before the parts they counted, so none points at missing parts."""
+    chosen = lively(config)
+    direct_dir, crashed_dir = tmp_path / "direct", tmp_path / "crashed"
+    direct = direct_run(chosen, direct_dir)
+    root = crashed_dir / CHECKPOINTS_DIR
+    with monkeypatch.context() as patch:
+        interrupt_at(patch, 2 * T_CKPT + 5, KeyboardInterrupt)
+        direct_run(chosen, crashed_dir)
+
+    def failing(self: TelemetryRecorder, extras: object) -> None:
+        raise RuntimeError
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TelemetryRecorder, "resume", failing)
+        with pytest.raises(RuntimeError):
+            resume_recorded(crashed_dir, REPOSITORY, checkpoint_path(root, T_CKPT), clock)
+    assert resume_recorded(crashed_dir, REPOSITORY, clock=clock) == direct
+    assert_same_tables(direct_dir, crashed_dir)
+
+
+def test_a_refused_resume_keeps_the_later_checkpoints(config: GenomeConfig, tmp_path: Path) -> None:
+    direct_run(lively(config), tmp_path)
+    root = tmp_path / CHECKPOINTS_DIR
+    with pytest.raises(ValueError, match="parts"):
+        resume_recorded(tmp_path, REPOSITORY, checkpoint_path(root, T_CKPT), clock)
+    assert checkpoint_path(root, 2 * T_CKPT).is_dir()
+
+
 def test_a_checkpoint_of_another_world_drops_no_telemetry(
     config: GenomeConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

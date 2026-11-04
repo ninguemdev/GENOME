@@ -231,17 +231,24 @@ class TelemetryRecorder:
             ),
         )
 
+    def require_resumable(self, extras: dict[str, npt.NDArray[np.generic]]) -> None:
+        """Check that the parts a checkpoint counted are all there, dropping nothing.
+
+        Raises:
+            ValueError: If a part is missing, as after the run was joined.
+        """
+        self._ticks.require_parts(int(extras["ticks_parts"][0]))
+        self._events.require_parts(int(extras["events_parts"][0]))
+
     def resume(self, extras: dict[str, npt.NDArray[np.generic]]) -> None:
         """Return to what ``checkpoint_arrays`` returned, dropping the parts after it.
 
         Raises:
             ValueError: If a part is missing, as after the run was joined.
         """
-        ticks_parts, events_parts = int(extras["ticks_parts"][0]), int(extras["events_parts"][0])
-        self._ticks.require_parts(ticks_parts)
-        self._events.require_parts(events_parts)
-        self._ticks.rewind(ticks_parts)
-        self._events.rewind(events_parts)
+        self.require_resumable(extras)
+        self._ticks.rewind(int(extras["ticks_parts"][0]))
+        self._events.rewind(int(extras["events_parts"][0]))
         ticks, births, deaths = (int(value) for value in extras["interval"])
         energy, water = (float(value) for value in extras["worst_errors"])
         self._interval = Interval(ticks, births, deaths, energy, water)

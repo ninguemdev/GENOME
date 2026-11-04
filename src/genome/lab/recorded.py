@@ -113,8 +113,10 @@ def resume_recorded(
     recorder = TelemetryRecorder(output, config.lab)
     # The restore refuses a checkpoint of another world before any telemetry is dropped.
     simulation.restore(loaded.snapshot)
-    recorder.resume(loaded.extras)
+    recorder.require_resumable(loaded.extras)
+    # Later checkpoints go first: a crash here must not leave one that counts dropped parts.
     drop_checkpoints_after(output / CHECKPOINTS_DIR, simulation.t)
+    recorder.resume(loaded.extras)
     mark_resumed(output, simulation.t, repository, clock)
     return _drive(simulation, recorder, config, output, clock)
 

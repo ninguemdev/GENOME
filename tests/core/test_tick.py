@@ -70,6 +70,46 @@ def test_movement_happens_before_interactions_and_costs(config: GenomeConfig) ->
     assert_allclose(simulation.state.energy[slot], 60.0 - 0.08 - 0.12 + 0.0144)
 
 
+def test_observe_is_what_the_next_tick_senses(config: GenomeConfig) -> None:
+    """Sensing early changes nothing and the tick does not sense twice (§2.4 step 1)."""
+    brain = ConstantBrain()
+    simulation = small_world(config, brain, n=3)
+    before = state_hash(simulation.named_arrays())
+    observations, slots = simulation.observe()
+    assert state_hash(simulation.named_arrays()) == before
+    assert simulation.observe()[0] is observations
+    assert_array_equal(slots, simulation.state.pool.active())
+    simulation.step_batch()
+    assert brain.last_observations is observations
+    assert simulation.observe()[0] is not observations
+
+
+def test_sensing_early_at_a_rain_block_boundary_changes_nothing(config: GenomeConfig) -> None:
+    """The sequence grows at the end of the tick, so the two paths never differ (§2.2, §2.5)."""
+    climate = dataclasses.replace(config.climate, rain_block_ticks=2)
+    short_blocks = dataclasses.replace(config, climate=climate)
+
+    def run(sense_early: bool) -> str:
+        simulation = small_world(short_blocks, ConstantBrain(), n=2)
+        for _ in range(7):
+            simulation.step_batch()
+            if sense_early:
+                simulation.observe()
+        return state_hash(simulation.named_arrays())
+
+    assert run(True) == run(False)
+
+
+def test_report_names_who_was_born_and_who_died(config: GenomeConfig) -> None:
+    _, _, simulation = ready_to_reproduce(config)
+    simulation.state.age[0] = 3000
+    report = simulation.step_batch()
+    assert_array_equal(report.born, [1])
+    assert_array_equal(report.dead.slots, [0])
+    assert_array_equal(report.dead.uids, [0])
+    assert report.dead.cause_labels() == ["old_age"]
+
+
 def test_memory_returns_in_the_next_observation(config: GenomeConfig) -> None:
     row = np.zeros(NUM_OUTPUTS)
     row[OUTPUT_MEMORY] = 0.7

@@ -43,6 +43,8 @@ class TickReport:
         deaths: Creatures that died.
         starvation, dehydration, old_age: Deaths by cause; simultaneous causes all count.
         balance: Relative error of the energy and water balances (§7.6).
+        born: Slot of each child, in ``uid`` order (§2.2).
+        dead: Who died and why (§2.2, §7.5). Their slots stay free until the next tick.
     """
 
     tick: int
@@ -53,6 +55,8 @@ class TickReport:
     dehydration: int
     old_age: int
     balance: Balance
+    born: IntArray
+    dead: Deaths
 
 
 class Simulation[G]:
@@ -84,6 +88,7 @@ class Simulation[G]:
         self.environment = create_environment(config, streams)
         self.state = CreatureState(config.run.max_population)
         self.t = 0
+        self._observed: tuple[FloatArray, IntArray] | None = None
         self._brain = brain
         self._operators = operators
         self._genomes: list[G | None] = [None] * config.run.max_population
@@ -102,11 +107,22 @@ class Simulation[G]:
             return True
         return run.terminate_on_extinction and self.state.pool.count == 0
 
+    def observe(self) -> tuple[FloatArray, IntArray]:
+        """The inputs of the next tick and the slot of each row (§2.4 step 1, §5.5).
+
+        Sensors draw nothing and change nothing, so the next ``step_batch`` reuses
+        this result instead of sensing twice. The result must not be modified.
+        """
+        if self._observed is None:
+            self._observed = build_observations(self.state, self.environment, self.t)
+        return self._observed
+
     def step_batch(self) -> TickReport:
         """Run one tick, in the fixed order of §2.4."""
         t, state, config = self.t, self.state, self.config
         before = self._stocks()
-        observations, slots = build_observations(state, self.environment, t)
+        observations, slots = self.observe()
+        self._observed = None
         outputs = self._brain.evaluate(observations, slots)
         integrate_locomotion(state, slots, outputs, self.environment.water.rivers, config.creatures)
         state.memory[slots] = outputs[:, OUTPUT_MEMORY]
@@ -121,7 +137,7 @@ class Simulation[G]:
             config.metabolism,
         )
         deaths = find_deaths(state, slots)
-        births = self._insert_children(plan)
+        born = self._insert_children(plan)
         dead_energy, dead_water = self._remove_dead(deaths)
         environment_flows = step_environment(self.environment, t)
         flows = self._tick_flows(
@@ -132,12 +148,14 @@ class Simulation[G]:
         return TickReport(
             tick=t,
             population=state.pool.count,
-            births=births,
+            births=int(born.size),
             deaths=deaths.count,
             starvation=int(np.count_nonzero(deaths.starvation)),
             dehydration=int(np.count_nonzero(deaths.dehydration)),
             old_age=int(np.count_nonzero(deaths.old_age)),
             balance=balance,
+            born=born,
+            dead=deaths,
         )
 
     def named_arrays(self) -> list[NamedArray]:
@@ -168,14 +186,14 @@ class Simulation[G]:
         repr_water[plan.rows] = plan.water_cost
         return Income(food, drink.water, repr_energy, repr_water), drink.from_rivers, plan
 
-    def _insert_children(self, plan: BirthPlan) -> int:
+    def _insert_children(self, plan: BirthPlan) -> IntArray:
         """Step 7: each child gets a copy of its parent's genome (§7.4, §8.6)."""
         children = insert_children(self.state, plan)
         for child, parent in zip(children.tolist(), plan.parents.tolist(), strict=True):
             genome = self._operators.clone(self._genome_of(parent))
             self._genomes[child] = genome
             self._brain.assign(child, genome)
-        return plan.count
+        return children
 
     def _remove_dead(self, deaths: Deaths) -> tuple[float, float]:
         """Step 6: free the slots of the dead, after the children took theirs (ADR 0006)."""
@@ -222,6 +240,8 @@ class Simulation[G]:
         survivors = slots[self.state.pool.alive[slots]]
         self.state.age[survivors] += 1
         self.t += 1
+        # Extend the rain now, so that the state never depends on who sensed tick t + 1 first.
+        self.environment.climate.is_raining(self.t)
 
 
 def _require_clonal_training(config: GenomeConfig) -> None:

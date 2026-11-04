@@ -11,10 +11,13 @@ import numpy as np
 import numpy.typing as npt
 
 from genome.core.reproduction import BirthPlan
-from genome.core.state import CreatureState
+from genome.core.state import NO_ID, CreatureState
 
 IntArray = npt.NDArray[np.int64]
 BoolArray = npt.NDArray[np.bool_]
+
+# Joins simultaneous causes in one label, always in the order of the table of §7.5 (ADR 0008).
+CAUSE_SEPARATOR = "+"
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,10 +26,12 @@ class Deaths:
 
     Attributes:
         slots: Slot of each dead creature, in ``uid`` order.
+        uids: Permanent identifier of each dead creature, which its slot loses at burial.
         starvation, dehydration, old_age: Cause flags of each dead creature.
     """
 
     slots: IntArray
+    uids: IntArray
     starvation: BoolArray
     dehydration: BoolArray
     old_age: BoolArray
@@ -36,6 +41,17 @@ class Deaths:
         """Number of deaths."""
         return int(self.slots.size)
 
+    def cause_labels(self) -> list[str]:
+        """The causes of each death, such as ``starvation+dehydration`` (§2.2, §7.5, ADR 0008)."""
+        flags = zip(
+            self.starvation.tolist(), self.dehydration.tolist(), self.old_age.tolist(), strict=True
+        )
+        names = ("starvation", "dehydration", "old_age")
+        return [
+            CAUSE_SEPARATOR.join(name for name, active in zip(names, row, strict=True) if active)
+            for row in flags
+        ]
+
 
 def find_deaths(state: CreatureState, slots: IntArray) -> Deaths:
     """Find who dies: E ≤ 0, H ≤ 0 or age ≥ T_vida (§7.5)."""
@@ -43,11 +59,13 @@ def find_deaths(state: CreatureState, slots: IntArray) -> Deaths:
     dehydration = state.hydration[slots] <= 0.0
     old_age = state.age[slots] >= state.t_vida[slots]
     dead = starvation | dehydration | old_age
-    return Deaths(slots[dead], starvation[dead], dehydration[dead], old_age[dead])
+    return Deaths(
+        slots[dead], state.pool.ids[slots[dead]], starvation[dead], dehydration[dead], old_age[dead]
+    )
 
 
 def insert_children(state: CreatureState, plan: BirthPlan) -> IntArray:
-    """Add the planned children and credit their parents (§7.4, §9.2).
+    """Add the planned children and credit their parents and grandparents (§7.4, §9.2).
 
     Returns:
         The slots of the children, in the order of their parents.
@@ -55,7 +73,24 @@ def insert_children(state: CreatureState, plan: BirthPlan) -> IntArray:
     children = state.add(plan.children)
     state.last_reproduction_tick[plan.parents] = plan.children.birth_tick
     state.n_children[plan.parents] += 1
+    _credit_grandparents(state, state.parent_uid[plan.parents])
     return children
+
+
+def _credit_grandparents(state: CreatureState, grandparents: IntArray) -> None:
+    """Add one grandchild per entry to the grandparents still alive (§9.2, ADR 0008).
+
+    A grandparent may appear more than once, because two siblings may give birth
+    in the same tick. A dead grandparent has no row to credit.
+    """
+    known = grandparents[grandparents != NO_ID]
+    if known.size == 0:
+        return
+    live = state.pool.active()
+    uids = state.pool.ids[live]
+    rows = np.minimum(np.searchsorted(uids, known), uids.size - 1)
+    found = rows[uids[rows] == known]
+    np.add.at(state.n_grandchildren, live[found], 1)
 
 
 def bury(state: CreatureState, deaths: Deaths) -> tuple[float, float]:

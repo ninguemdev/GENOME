@@ -160,7 +160,7 @@ class GenomeParallelEnv[G](ParallelEnv[str, Observation, Action]):  # type: igno
 
         Raises:
             RuntimeError: Before ``reset``, or after the run finished.
-            ValueError: If the actions do not match the live agents or their space.
+            ValueError: If the actions do not match the live agents, or hold NaN.
         """
         simulation = self._running()
         self._load_actions(actions)
@@ -241,14 +241,14 @@ class GenomeParallelEnv[G](ParallelEnv[str, Observation, Action]):  # type: igno
         slots = np.array([self._slot_of[name] for name in names], dtype=np.int64)
         rows = np.array([actions[name] for name in names], dtype=np.float64)
         rows = rows.reshape(len(names), NUM_OUTPUTS) if names else np.zeros((0, NUM_OUTPUTS))
-        self._check_action_rows(rows)
-        self._brain.load(slots, rows)
+        self._brain.load(slots, self._limited(rows))
 
-    def _check_action_rows(self, rows: FloatArray) -> None:
+    def _limited(self, rows: FloatArray) -> FloatArray:
+        """Limit external actions to their ranges (§6.2); NaN has no nearest bound (ADR 0008)."""
+        if np.isnan(rows).any():
+            raise ValueError("actions must not be NaN")
         box = self._action_box
-        # Written so that NaN, for which every comparison is false, also fails.
-        if not np.all((rows >= box.low) & (rows <= box.high)):
-            raise ValueError("actions outside the action space")
+        return np.clip(rows, box.low, box.high)
 
     def _rewards(self, simulation: Simulation[G], reported: Sequence[str]) -> dict[str, float]:
         """The increment of fitness of each agent in the tick that ran (§2.2, §9.2)."""

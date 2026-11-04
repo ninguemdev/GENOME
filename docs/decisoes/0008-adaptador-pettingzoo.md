@@ -3,7 +3,7 @@
 - **Data:** 2026-11-04
 - **Status:** aceita
 - **Fase:** F2
-- **Seções afetadas:** ARQUITETURA §2.1, §2.2, §2.4, §7.5, §9.2
+- **Seções afetadas:** ARQUITETURA §2.1, §2.2, §2.4, §6.2, §7.5, §9.2
 
 ## Contexto
 
@@ -22,6 +22,7 @@ O §2.2 define o `GenomeParallelEnv`, mas deixa em aberto como ele obtém o que 
 9. **Observação de quem morreu.** Quem morre no tick não sente mais, então recebe a última observação que já tinha recebido.
 10. **Sensores antecipados.** `Simulation.observe` guarda as entradas do tick seguinte, e o `step_batch` as reutiliza, para o adaptador não pagar os sensores duas vezes. A chuva passa a ser estendida no fim do tick, para que sentir antes não mude o estado numa fronteira de bloco.
 11. **Conflito entre o `parallel_api_test` e o §2.2.** O teste oficial afirma que um `agent` terminado nunca volta, enquanto o §2.2 define agentes como slots reutilizados. Mantivemos o §2.2. O teste oficial roda em três cenários sem reuso: até o truncamento, até a extinção e com nascimentos em slots novos. O reuso tem teste próprio, e a equivalência com o caminho rápido cobre mundos com reuso.
+12. **Ações externas.** Valores fora das faixas são limitados ao extremo mais próximo, como o §6.2 manda. `NaN` não tem extremo mais próximo e continuaria `NaN` depois do limite, então é erro.
 
 ## Consequências
 

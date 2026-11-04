@@ -135,12 +135,24 @@ def test_actions_must_match_the_live_agents(config: GenomeConfig) -> None:
         env.step({**actions, "creature_0005": np.zeros(NUM_OUTPUTS, dtype=np.float32)})
 
 
-@pytest.mark.parametrize("bad", [2.0, -2.0, float("nan")])
-def test_actions_outside_the_space_are_errors(config: GenomeConfig, bad: float) -> None:
+def test_actions_outside_the_ranges_are_limited(config: GenomeConfig) -> None:
+    """Each value becomes its nearest bound before entering the core (§6.2)."""
+    wild = make_env(sized(config, n=1))
+    wild.reset(seed=1)
+    wild.step({"creature_0000": np.array([2.0, -2.0, 2.0, -2.0, 2.0, -2.0, 2.0], dtype=np.float32)})
+    limited = make_env(sized(config, n=1))
+    limited.reset(seed=1)
+    limited.step({"creature_0000": np.array([1, -1, 1, 0, 1, 0, 1], dtype=np.float32)})
+    assert wild._simulation is not None
+    assert wild._simulation.state.memory[0] == 1.0
+    assert state_hash(list(wild.state().items())) == state_hash(list(limited.state().items()))
+
+
+def test_nan_actions_are_errors(config: GenomeConfig) -> None:
     env = make_env(sized(config, n=1))
     env.reset(seed=1)
-    with pytest.raises(ValueError, match="outside"):
-        env.step({"creature_0000": np.full(NUM_OUTPUTS, bad, dtype=np.float32)})
+    with pytest.raises(ValueError, match="NaN"):
+        env.step({"creature_0000": np.full(NUM_OUTPUTS, np.nan, dtype=np.float32)})
 
 
 def test_action_of_the_wrong_size_is_an_error(config: GenomeConfig) -> None:

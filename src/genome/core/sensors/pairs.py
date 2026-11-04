@@ -25,6 +25,7 @@ class CreatureView:
     Attributes:
         slots: Slot of each row.
         position, heading, color: Current position, orientation and colour gene.
+        mass: Mass gene, which scales what the creature can eat and drink (§7.3).
         body_radius, touch_radius: r_c and r_t (§5.1).
         age, t_mat, t_vida: Age and the ages of maturity and of old age (§5.1).
         v_max: Velocity gene, which scales proprioception (§6.3).
@@ -39,6 +40,7 @@ class CreatureView:
     position: FloatArray
     heading: FloatArray
     color: FloatArray
+    mass: FloatArray
     body_radius: FloatArray
     touch_radius: FloatArray
     age: IntArray
@@ -70,6 +72,7 @@ def view_creatures(state: CreatureState, size: tuple[float, float]) -> CreatureV
         position=position,
         heading=state.heading[slots],
         color=state.color[slots],
+        mass=state.mass[slots],
         body_radius=state.body_radius[slots],
         touch_radius=state.touch_radius[slots],
         age=state.age[slots],

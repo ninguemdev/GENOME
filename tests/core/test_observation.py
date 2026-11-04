@@ -14,7 +14,7 @@ from genome.core.sensors import observation as obs
 from genome.core.sensors.observation import build_observations
 from genome.core.state import CreatureState
 from tests.conftest import CONFIGS
-from tests.core.scenes import make_creatures
+from tests.core.scenes import make_creatures, permuted
 
 
 def environment_of(config: GenomeConfig, seed: int = 2) -> Environment:
@@ -157,20 +157,6 @@ def test_blocks_are_where_section_5_5_says(config: GenomeConfig) -> None:
     assert values[obs.INPUT_VISION_DENSITY : obs.INPUT_VISION_AFFINITY].max() > 0.0
     assert values[obs.INPUT_VISION_AFFINITY : obs.INPUT_SMELL_FOOD_INTENSITY].max() > 0.0
     assert values[obs.INPUT_SMELL_FOOD_INTENSITY] > 0.0
-
-
-def permuted(state: CreatureState, order: list[int]) -> CreatureState:
-    """The same creatures with the same ``uid``, placed in other slots."""
-    other = CreatureState(state.pool.capacity)
-    index = np.array(order, dtype=np.int64)
-    for name, value in vars(state).items():
-        if isinstance(value, np.ndarray):
-            target = getattr(other, name)
-            target[index] = value
-    other.pool.alive[index] = state.pool.alive
-    other.pool.ids[index] = state.pool.ids
-    other.pool.next_id = state.pool.next_id
-    return other
 
 
 @settings(max_examples=30)

@@ -60,6 +60,20 @@ def make_plants(
     return plants
 
 
+def permuted(state: CreatureState, order: list[int]) -> CreatureState:
+    """The same creatures with the same ``uid``, placed in other slots."""
+    other = CreatureState(state.pool.capacity)
+    index = np.array(order, dtype=np.int64)
+    for name, value in vars(state).items():
+        if isinstance(value, np.ndarray):
+            target = getattr(other, name)
+            target[index] = value
+    other.pool.alive[index] = state.pool.alive
+    other.pool.ids[index] = state.pool.ids
+    other.pool.next_id = state.pool.next_id
+    return other
+
+
 def view_of(state: CreatureState) -> CreatureView:
     """The view of ``state`` on the test torus."""
     return view_creatures(state, SIZE)

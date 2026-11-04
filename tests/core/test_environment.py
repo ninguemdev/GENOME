@@ -68,3 +68,17 @@ def test_irrigation_is_recomputed_every_t_irr(config: GenomeConfig) -> None:
     step_environment(environment, config.plants.t_irr)
     assert np.all(plants.hops[plants.pool.active()] != UNIRRIGATED)
     assert dataclasses.is_dataclass(environment)
+
+
+def test_smell_fields_start_filled_and_refresh_every_t_olf(config: GenomeConfig) -> None:
+    environment = create_environment(config, continuous_world_streams(2))
+    smell = environment.smell
+    assert smell.food.sum() > 0.0
+    assert smell.water.sum() > 0.0
+    smell.food[:] = -1.0
+    step_environment(environment, 1)
+    assert np.all(smell.food == -1.0)
+    step_environment(environment, config.sensors.t_olf)
+    assert np.all(smell.food >= 0.0)
+    total = environment.plants.biomass[environment.plants.pool.active()].sum()
+    assert smell.food.sum() == pytest.approx(total)

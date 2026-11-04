@@ -5,6 +5,7 @@ All rule violations are collected and reported together in one ``ConfigError``.
 
 import math
 from collections.abc import Callable
+from typing import get_args
 
 from genome.core.config.errors import ConfigError
 from genome.core.config.sections import (
@@ -17,6 +18,7 @@ from genome.core.config.sections import (
     NEATConfig,
     PlantConfig,
     RunConfig,
+    RunMode,
     SensorConfig,
     TrainingConfig,
     WaterConfig,
@@ -85,6 +87,11 @@ def _unit_interval(section: object, prefix: str, *names: str) -> Errors:
 
 def _check_run(run: RunConfig, errors: Errors) -> None:
     errors += _positive(run, "run", "max_population")
+    _require(
+        errors,
+        run.mode in get_args(RunMode),
+        f"run.mode must be one of {get_args(RunMode)} (got {run.mode!r})",
+    )
     _require(
         errors,
         run.max_ticks is None or run.max_ticks > 0,

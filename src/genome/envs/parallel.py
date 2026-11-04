@@ -14,7 +14,7 @@ import numpy.typing as npt
 from gymnasium.spaces import Box
 from pettingzoo import ParallelEnv
 
-from genome.core.config import GenomeConfig
+from genome.core.config import GenomeConfig, validate
 from genome.core.founders import founder_bodies
 from genome.core.protocols import NUM_OUTPUTS, Brain, GenomeOperators
 from genome.core.rng import (
@@ -115,6 +115,7 @@ class GenomeParallelEnv[G](ParallelEnv[str, Observation, Action]):  # type: igno
 
         Raises:
             ValueError: Without any seed so far, or with an unknown split.
+            ConfigError: If ``mode`` makes the configuration invalid (§2.3).
             NotImplementedError: For what only exists from F3 on (ADR 0004).
         """
         if seed is not None:
@@ -199,7 +200,9 @@ class GenomeParallelEnv[G](ParallelEnv[str, Observation, Action]):  # type: igno
         if mode == self._config.run.mode:
             return self._config
         run = dataclasses.replace(self._config.run, mode=mode)
-        return dataclasses.replace(self._config, run=run)
+        config = dataclasses.replace(self._config, run=run)
+        validate(config)
+        return config
 
     def _streams_for(self, options: Mapping[str, Any], seed: int) -> WorldStreams:
         """The streams of the chosen world (§2.5); validation and test use the lab seed."""

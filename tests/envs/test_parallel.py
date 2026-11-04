@@ -5,7 +5,7 @@ import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 from pettingzoo.test import parallel_api_test
 
-from genome.core.config import GenomeConfig, load_config
+from genome.core.config import ConfigError, GenomeConfig, load_config
 from genome.core.protocols import NUM_OUTPUTS, OUTPUT_REPRODUCE
 from genome.core.state_hash import state_hash
 from genome.envs.parallel import GenomeParallelEnv
@@ -303,6 +303,15 @@ def test_continuous_mode_starts_in_f3(config: GenomeConfig) -> None:
     env = make_env(preset)
     with pytest.raises(NotImplementedError, match="F3"):
         env.reset(seed=1)
+
+
+def test_mode_option_goes_through_validation(config: GenomeConfig) -> None:
+    """A mode chosen in ``reset`` obeys the rules applied when loading (§2.3, §12.1)."""
+    without_limit = make_env(load_config(CONFIGS / "continuous.yaml"))
+    with pytest.raises(ConfigError, match="max_ticks"):
+        without_limit.reset(seed=1, options={"mode": "training"})
+    with pytest.raises(ConfigError, match=r"run\.mode"):
+        make_env(sized(config)).reset(seed=1, options={"mode": "treino"})
 
 
 def test_state_is_a_copy_for_inspection(config: GenomeConfig) -> None:

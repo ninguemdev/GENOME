@@ -55,8 +55,8 @@ class Water:
             *self.puddles.named_arrays(),
         ]
 
-    def load_arrays(self, saved: SavedArrays) -> None:
-        """Return to a saved state; only volumes change, and the geography must match (§11.6).
+    def require_same_geography(self, saved: SavedArrays) -> None:
+        """Refuse a snapshot of another world, whose geography differs (§11.6).
 
         Raises:
             ValueError: If the snapshot belongs to another world.
@@ -70,6 +70,9 @@ class Water:
             ],
             saved,
         )
+
+    def load_arrays(self, saved: SavedArrays) -> None:
+        """Return to a saved state; only the volumes change (§11.6)."""
         copy_arrays(
             [("lakes.volume", self.lakes.volume), ("puddles.volume", self.puddles.volume)], saved
         )

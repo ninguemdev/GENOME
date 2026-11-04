@@ -15,6 +15,9 @@ from genome.core.state_hash import NamedArray
 
 SavedArrays = Mapping[str, npt.NDArray[np.generic]]
 
+#: Arrays whose length changes during a run: the rain grows block by block (§2.5, §3.6).
+GROWING_ARRAYS = ("climate.rain",)
+
 
 @dataclass(frozen=True, slots=True)
 class SimulationSnapshot[G]:
@@ -35,6 +38,20 @@ def copy_arrays(targets: Sequence[NamedArray], saved: SavedArrays) -> None:
     """Write the saved values into the arrays that hold the live state, in place."""
     for name, target in targets:
         target[...] = saved[name]
+
+
+def require_same_shapes(current: Sequence[NamedArray], saved: SavedArrays) -> None:
+    """Refuse a snapshot whose arrays have other shapes (§11.6).
+
+    Raises:
+        ValueError: Naming the first array that differs.
+    """
+    for name, array in current:
+        if array.shape != saved[name].shape:
+            raise ValueError(
+                f"the snapshot does not match this simulation: {name} has shape "
+                f"{saved[name].shape}, expected {array.shape}"
+            )
 
 
 def require_same_arrays(current: Sequence[NamedArray], saved: SavedArrays) -> None:

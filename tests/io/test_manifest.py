@@ -85,3 +85,42 @@ def test_git_state_without_git_is_null(tmp_path: Path, monkeypatch: pytest.Monke
 def test_config_file_reads_back_with_the_same_hash(config: GenomeConfig, tmp_path: Path) -> None:
     write_config(tmp_path, config)
     assert config_hash(load_config(tmp_path / CONFIG_FILE)) == config_hash(config)
+
+
+def commit_a_file(repository: Path) -> None:
+    identity = ["-c", "user.name=test", "-c", "user.email=test@example.com"]
+    (repository / "code.txt").write_text("code", encoding="utf-8")
+    for arguments in (["init"], ["add", "."], [*identity, "commit", "-m", "first"]):
+        subprocess.run(["git", *arguments], cwd=repository, check=True, capture_output=True)
+
+
+def test_the_files_of_the_run_are_not_changes_to_the_code(tmp_path: Path) -> None:
+    commit_a_file(tmp_path)
+    output = tmp_path / "results" / "a"
+    output.mkdir(parents=True)
+    (output / "config.yaml").write_text("x", encoding="utf-8")
+    assert git_state(tmp_path)["dirty"] is True
+    assert git_state(tmp_path, output)["dirty"] is False
+    (tmp_path / "code.txt").write_text("changed", encoding="utf-8")
+    assert git_state(tmp_path, output)["dirty"] is True
+
+
+def test_output_outside_the_repository_changes_nothing(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    commit_a_file(repository)
+    assert git_state(repository, tmp_path / "elsewhere")["dirty"] is False
+
+
+def test_git_output_is_read_as_utf8_whatever_the_codepage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(["git"], 0, "abc", "")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    git_state(REPOSITORY)
+    assert (seen["encoding"], seen["errors"]) == ("utf-8", "replace")

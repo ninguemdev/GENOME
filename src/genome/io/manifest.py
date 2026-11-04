@@ -33,20 +33,29 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def git_state(repository: Path) -> dict[str, Any]:
+def git_state(repository: Path, output: Path | None = None) -> dict[str, Any]:
     """The commit of ``repository`` and whether it has uncommitted changes (§11.7).
 
     Both are null outside a repository or without ``git``: a run does not depend on them.
+
+    Args:
+        repository: Where to ask.
+        output: Directory of the run, whose own files are not changes to the code.
     """
     commit = _git(repository, "rev-parse", "HEAD")
     if commit is None:
         return {"commit": None, "dirty": None}
-    status = _git(repository, "status", "--porcelain")
+    status = _git(repository, "status", "--porcelain", *_pathspec(repository, output))
     return {"commit": commit, "dirty": None if status is None else bool(status)}
 
 
 def new_manifest(
-    config: GenomeConfig, root_seed: int, controller: str, repository: Path, clock: Clock
+    config: GenomeConfig,
+    root_seed: int,
+    controller: str,
+    repository: Path,
+    clock: Clock,
+    output: Path | None = None,
 ) -> Manifest:
     """Everything §11.7 knows when a run starts.
 
@@ -59,7 +68,7 @@ def new_manifest(
         "seed_laboratorio": config.lab.lab_seed,
         "protocol_version": None,
         "controller": controller,
-        **git_state(repository),
+        **git_state(repository, output),
         "versions": _versions(),
         "system": {"platform": platform.platform(), "cpu": platform.processor()},
         "started_at": clock().isoformat(),
@@ -84,7 +93,7 @@ def read_manifest(output: Path) -> Manifest:
 def mark_resumed(output: Path, tick: int, repository: Path, clock: Clock) -> Manifest:
     """Note a restart: the code may have changed since the start (§11.7, ADR 0009)."""
     manifest = read_manifest(output)
-    entry = {"tick": tick, "at": clock().isoformat(), **git_state(repository)}
+    entry = {"tick": tick, "at": clock().isoformat(), **git_state(repository, output)}
     manifest["resumed"] = [*manifest["resumed"], entry]
     manifest["finished_at"] = None
     manifest["outcome"] = "interrupted"
@@ -120,13 +129,26 @@ def _versions() -> dict[str, str]:
     return versions
 
 
+def _pathspec(repository: Path, output: Path | None) -> list[str]:
+    """Arguments of ``git status`` that leave ``output`` out, if it is inside the repository."""
+    if output is None:
+        return []
+    try:
+        inside = output.resolve().relative_to(repository.resolve())
+    except ValueError:
+        return []
+    return ["--", ".", f":(exclude,literal){inside.as_posix()}"]
+
+
 def _git(repository: Path, *arguments: str) -> str | None:
     try:
         done = subprocess.run(
             ["git", *arguments],
             cwd=repository,
             capture_output=True,
-            text=True,
+            # Not the codepage of the system: a metadata field must never abort a run.
+            encoding="utf-8",
+            errors="replace",
             timeout=GIT_TIMEOUT_SECONDS,
             check=False,
         )

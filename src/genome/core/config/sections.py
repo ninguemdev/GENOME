@@ -134,6 +134,7 @@ class SensorConfig:
     cell_olf: float
     sigma_olf: float
     t_olf: int
+    olf_water_subsamples: int
     alpha_olf_deg: float
     nostril_body_factor: float
     nostril_offset: float

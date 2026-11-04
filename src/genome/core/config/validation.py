@@ -159,7 +159,7 @@ def _check_creatures(creatures: CreatureConfig, errors: Errors) -> None:
 def _check_sensors(sensors: SensorConfig, errors: Errors) -> None:
     errors += _positive(sensors, "sensors", "r_vis", "fov_half_deg", "edge_window_deg")
     errors += _positive(sensors, "sensors", "cell_olf", "sigma_olf", "t_olf", "eps_olf")
-    errors += _positive(sensors, "sensors", "k_olf_food", "k_olf_water")
+    errors += _positive(sensors, "sensors", "k_olf_food", "k_olf_water", "olf_water_subsamples")
     errors += _unit_interval(sensors, "sensors", "m_noite", "s_min")
     _require(
         errors,

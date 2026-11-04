@@ -465,6 +465,7 @@ As velocidades (33–35) são as reais, incluindo inércia e correnteza: com in�
 | `cell_olf` | 4 | Tamanho da célula das grades de olfato |
 | `sigma_olf` | 3 células | Desvio do filtro gaussiano |
 | `T_olf` | 10 | Intervalo de recálculo dos campos (ticks) |
+| `olf_water_subsamples` | 4 | Pontos por lado de célula na fração de água do olfato (ADR 0005) |
 | `alpha_olf` | 45° | Ângulo das narinas |
 | `k_olf_food`, `k_olf_water` | 0,5; 2,0 | Escalas de saturação do olfato |
 | `s_min` | 0,8 | Similaridade de cor mínima para parceiro |

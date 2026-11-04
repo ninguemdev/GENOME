@@ -68,9 +68,13 @@ def retina_signals_py(
     for p in range(observer.size):
         if distance[p] >= radius:
             continue
-        # Same wrap as space.wrap_angle, including its rounding fix.
-        wrapped = (np.arctan2(dy[p], dx[p]) - heading[observer[p]] + np.pi) % TWO_PI
-        theta = (0.0 if wrapped >= TWO_PI else wrapped) - np.pi
+        if dx[p] == 0.0 and dy[p] == 0.0:
+            # A zero vector has no direction; it counts as straight ahead (ADR 0005).
+            theta = 0.0
+        else:
+            # Same wrap as space.wrap_angle, including its rounding fix.
+            wrapped = (np.arctan2(dy[p], dx[p]) - heading[observer[p]] + np.pi) % TWO_PI
+            theta = (0.0 if wrapped >= TWO_PI else wrapped) - np.pi
         if abs(theta) > fov:
             continue
         scale = min(1.0, (fov - abs(theta)) / edge) * (1.0 - distance[p] / radius)

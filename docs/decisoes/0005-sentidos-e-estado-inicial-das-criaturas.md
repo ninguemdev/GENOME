@@ -7,7 +7,7 @@
 
 ## Contexto
 
-As seções de sentidos e locomoção descrevem os resultados esperados, mas deixam alguns detalhes em aberto: a tabela da visão não tem linha para criaturas, a fração de água por célula do olfato não tem algoritmo, a grade não fixa onde cada valor fica, e o estado inicial não diz como sortear as posições. Todas as escolhas abaixo foram aprovadas pelo usuário no plano do bloco 2 da F1.
+As seções de sentidos e locomoção descrevem os resultados esperados, mas deixam alguns detalhes em aberto: a tabela da visão não tem linha para criaturas, a fração de água por célula do olfato não tem algoritmo, a grade não fixa onde cada valor fica, e o estado inicial não diz como sortear as posições. As escolhas 1 a 6 foram aprovadas pelo usuário no plano do bloco 2 da F1. A escolha 7 surgiu na revisão do PR do bloco, ainda aguarda a confirmação dele e pode mudar sem afetar as demais.
 
 ## Decisão
 
@@ -17,6 +17,7 @@ As seções de sentidos e locomoção descrevem os resultados esperados, mas dei
 4. **Água dos fundadores (§5.6).** "Qualquer água" é a água existente em t = 0, medida por `Water.margin_distance`. As poças começam vazias (ADR 0004), então as posições de poça não restringem o nascimento.
 5. **Posições dos fundadores (§5.6).** Pontos uniformes do fluxo criaturas, em lotes de tamanho fixo, são aceitos em ordem até completar a população. Depois, as orientações são sorteadas em U\[−π, π) do mesmo fluxo. Criaturas podem nascer sobrepostas (§6.3).
 6. **Instante do comando (§6.3).** A velocidade-alvo usa a orientação φ\_t e a correnteza em P\_t. Depois são atualizadas a velocidade e, com ela, a posição e a orientação.
+7. **Objeto na mesma posição (§5.2).** Um vetor nulo não tem direção, então o objeto conta como bem à frente (θ = 0), em qualquer orientação. Sem essa regra, `arctan2(0, 0)` daria θ = −φ, e o objeto mais próximo possível ficaria invisível para quem olhasse para o lado errado. Isso pode ocorrer: dois filhos de um genitor imóvel nascem no mesmo ponto (§7.4).
 
 ## Consequências
 

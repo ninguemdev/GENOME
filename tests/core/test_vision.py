@@ -245,6 +245,17 @@ def test_overlapping_creature_is_seen_and_self_is_not(config: GenomeConfig) -> N
     assert_allclose(channels[:, DENSITY + 2], 1.0 - math.exp(-FOVEA_AHEAD))
 
 
+@pytest.mark.parametrize("heading", [0.0, 1.0, 2.5, -3.0])
+def test_overlap_is_seen_straight_ahead_at_any_heading(
+    config: GenomeConfig, heading: float
+) -> None:
+    """A zero vector has no direction, so it counts as θ = 0 (ADR 0005)."""
+    state = make_creatures(config, [(50.0, 50.0), (50.0, 50.0)], headings=[heading, heading])
+    channels = see(config, state, make_plants([(50.0, 50.0)]))
+    assert_allclose(channels[:, DENSITY + 2], 1.0 - math.exp(-FOVEA_AHEAD))
+    assert_allclose(channels[:, FOOD + 2], FOVEA_AHEAD)
+
+
 def test_affinity_uses_color_similarity(config: GenomeConfig) -> None:
     """sim(0.1, 0.9) = 0.6 at 20 units: 0.6 · 0.5 · g₃."""
     state = make_creatures(config, [(50.0, 50.0), (70.0, 50.0)], colors=[0.1, 0.9])

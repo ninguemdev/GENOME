@@ -76,7 +76,7 @@ build(repo): adiciona numba às dependências
 ## 5. Sem coautoria
 
 - Commits, PRs, issues e comentários **não** levam `Co-Authored-By`, "Generated with Claude Code" nem qualquer marca de ferramenta.
-- A atribuição automática está desligada em `.claude/settings.json` (`attribution.commit` e `attribution.pr` vazios).
+- A atribuição automática está desligada em `.claude/settings.json` (`attribution.commit` e `attribution.pr` vazios, `attribution.sessionUrl` falso).
 - O autor é a identidade git já configurada na máquina. O agente nunca altera `user.name` nem `user.email`.
 - **Verificação antes do push:**
 

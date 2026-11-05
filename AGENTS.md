@@ -73,7 +73,7 @@ Antes de cada commit: formatação, lint, mypy, contratos e testes rápidos. Ant
 - Branch `fase/fN-nome`. Nada de commits na `main`, exceto o bootstrap inicial.
 - Conventional Commits em português: `tipo(escopo): descrição no imperativo`. Commits atômicos, cada um com testes passando, rodapé `Refs #N`.
 - **Sem coautoria.** Nenhum trailer `Co-Authored-By`, nenhuma linha "Generated with Claude Code" ou similar em commits, PRs, issues ou comentários. Use a identidade git já configurada e nunca altere `user.name` ou `user.email`.
-- O agente abre o PR; o usuário revisa e faz o merge. Nunca force-push na `main`; `--force-with-lease` só no próprio branch, depois de rebase.
+- O agente abre o PR, valida e faz o merge (`docs/FLUXO_GIT.md` §6). Nunca force-push na `main`; `--force-with-lease` só no próprio branch, depois de rebase.
 - Ao fim de cada sessão, atualize o checklist editando o corpo da issue. Não comente a cada passo.
 
 ## Definição de pronto (cada item do checklist)

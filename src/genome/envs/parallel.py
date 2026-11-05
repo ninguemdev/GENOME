@@ -44,6 +44,10 @@ class Renderer(Protocol):
         """Draw a snapshot of the world; ``Any`` because each render mode returns its own type."""
         ...
 
+    def close(self) -> None:
+        """Release what drawing took, such as a window."""
+        ...
+
 
 # PettingZoo has no type information, so mypy sees its base class as ``Any``.
 class GenomeParallelEnv[G](ParallelEnv[str, Observation, Action]):  # type: ignore[misc]
@@ -189,6 +193,11 @@ class GenomeParallelEnv[G](ParallelEnv[str, Observation, Action]):  # type: igno
         if self.render_mode is None or self._renderer is None:
             raise RuntimeError("render needs a render_mode and an injected renderer")
         return self._renderer.render(self.state())
+
+    def close(self) -> None:
+        """Close the window of the renderer, if there is one (§2.2)."""
+        if self._renderer is not None:
+            self._renderer.close()
 
     def state(self) -> dict[str, npt.NDArray[np.generic]]:
         """A copy of the arrays of the world, for inspection (§2.2)."""

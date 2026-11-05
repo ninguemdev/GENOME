@@ -14,6 +14,12 @@ FloatArray = npt.NDArray[np.float64]
 BoolArray = npt.NDArray[np.bool_]
 
 
+def water_radius(r_max: npt.ArrayLike, volume: FloatArray, capacity: npt.ArrayLike) -> FloatArray:
+    """Radius of a round body of water, r = r_max · √(V / V_cap) (§3.3, §3.4)."""
+    radius: FloatArray = np.asarray(r_max) * np.sqrt(volume / np.asarray(capacity))
+    return radius
+
+
 class Lakes:
     """Lakes of one world; they start full (§3.3).
 
@@ -41,7 +47,7 @@ class Lakes:
 
     def radius(self) -> FloatArray:
         """Current radius r = r_max · √(V / V_max) (§3.3)."""
-        return self.r_max * np.sqrt(self.volume / self.v_max)
+        return water_radius(self.r_max, self.volume, self.v_max)
 
     def fill(self) -> FloatArray:
         """Fraction of each lake that holds water, V / V_max (§5.2, §5.3)."""

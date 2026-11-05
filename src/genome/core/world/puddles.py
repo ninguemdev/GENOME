@@ -12,6 +12,7 @@ import numpy.typing as npt
 from genome.core.config import WaterConfig
 from genome.core.space import distance
 from genome.core.state_hash import NamedArray
+from genome.core.world.lakes import water_radius
 
 FloatArray = npt.NDArray[np.float64]
 BoolArray = npt.NDArray[np.bool_]
@@ -48,7 +49,7 @@ class Puddles:
 
     def radius(self) -> FloatArray:
         """Current radius r = r_p,max · √(V / V_p) (§3.4)."""
-        return self._r_p_max * np.sqrt(self.volume / self._v_p)
+        return water_radius(self._r_p_max, self.volume, self._v_p)
 
     def fill(self) -> FloatArray:
         """Fraction of each puddle that holds water, V / V_p (§5.2, §5.3)."""

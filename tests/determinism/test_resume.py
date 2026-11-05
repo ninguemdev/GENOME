@@ -173,3 +173,59 @@ def test_restore_refuses_genomes_of_other_creatures(config: GenomeConfig) -> Non
     )
     with pytest.raises(ValueError, match="genomes"):
         simulation.restore(wrong)
+
+
+def test_a_refused_snapshot_leaves_the_world_as_it_was(config: GenomeConfig) -> None:
+    """The check comes before the first write, whatever was wrong with the snapshot."""
+    simulation = make_simulation(small(config), 3, "immobile")
+    snapshot = simulation.snapshot()
+    simulation.step_batch()
+    before = state_hash(simulation.named_arrays())
+    wrong: SimulationSnapshot[FixedGenome] = dataclasses.replace(
+        snapshot, genomes=snapshot.genomes[1:]
+    )
+    with pytest.raises(ValueError, match="genomes"):
+        simulation.restore(wrong)
+    assert state_hash(simulation.named_arrays()) == before
+    simulation.step_batch()
+
+
+def test_restore_refuses_arrays_of_another_size_by_name(config: GenomeConfig) -> None:
+    chosen = small(config)
+    snapshot = make_simulation(chosen, 3, "immobile").snapshot()
+    run = dataclasses.replace(chosen.run, max_population=chosen.run.max_population + 1)
+    bigger = make_simulation(dataclasses.replace(chosen, run=run), 3, "immobile")
+    before = state_hash(bigger.named_arrays())
+    with pytest.raises(ValueError, match=r"creatures.alive has shape"):
+        bigger.restore(snapshot)
+    assert state_hash(bigger.named_arrays()) == before
+
+
+def test_restore_refuses_streams_of_another_generator(config: GenomeConfig) -> None:
+    simulation = make_simulation(small(config), 3, "immobile")
+    snapshot = simulation.snapshot()
+    streams = {**snapshot.streams, "plants": {"bit_generator": "MT19937"}}
+    with pytest.raises(ValueError, match="PCG64"):
+        simulation.restore(dataclasses.replace(snapshot, streams=streams))
+
+
+def test_restore_refuses_a_malformed_stream_before_any_write(config: GenomeConfig) -> None:
+    simulation = make_simulation(small(config), 3, "immobile")
+    snapshot = simulation.snapshot()
+    simulation.step_batch()
+    before = state_hash(simulation.named_arrays())
+    streams = {**snapshot.streams, "creatures": {"bit_generator": "PCG64"}}
+    with pytest.raises(ValueError, match="creatures"):
+        simulation.restore(dataclasses.replace(snapshot, streams=streams))
+    assert state_hash(simulation.named_arrays()) == before
+
+
+def test_restore_refuses_rain_of_another_shape(config: GenomeConfig) -> None:
+    simulation = make_simulation(small(config), 3, "immobile")
+    snapshot = simulation.snapshot()
+    arrays = tuple(
+        (name, array.reshape(1, -1) if name == "climate.rain" else array)
+        for name, array in snapshot.arrays
+    )
+    with pytest.raises(ValueError, match=r"climate\.rain"):
+        simulation.restore(dataclasses.replace(snapshot, arrays=arrays))

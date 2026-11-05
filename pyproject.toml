@@ -17,6 +17,11 @@ dependencies = [
     "pyarrow>=17",
 ]
 
+[project.optional-dependencies]
+viz = [
+    "pygame-ce>=2.5.8",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
@@ -27,6 +32,8 @@ dev = [
     "import-linter>=2.0",
     "pre-commit>=3.7",
     "types-PyYAML>=6.0",
+    # The viewer is an extra (PADROES §8), but its tests and types run in every check.
+    "genome[viz]",
 ]
 
 [build-system]

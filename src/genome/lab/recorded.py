@@ -11,7 +11,12 @@ from typing import cast
 from genome.core.config import GenomeConfig, load_config
 from genome.core.state_hash import state_hash
 from genome.core.tick import Simulation
-from genome.io.checkpoints import latest_checkpoint, load_checkpoint, save_checkpoint
+from genome.io.checkpoints import (
+    drop_checkpoints_after,
+    latest_checkpoint,
+    load_checkpoint,
+    save_checkpoint,
+)
 from genome.io.manifest import (
     CONFIG_FILE,
     MANIFEST_FILE,
@@ -71,10 +76,12 @@ def run_recorded(
     """
     if (output / MANIFEST_FILE).exists():
         raise FileExistsError(f"{output} already holds a run; resume it or choose another")
+    # A world that cannot be built must leave no run behind in ``output``.
+    simulation = make_simulation(config, seed, controller)
+    manifest = new_manifest(config, seed, controller, repository, clock, output)
     output.mkdir(parents=True, exist_ok=True)
     write_config(output, config)
-    write_manifest(output, new_manifest(config, seed, controller, repository, clock))
-    simulation = make_simulation(config, seed, controller)
+    write_manifest(output, manifest)
     recorder = TelemetryRecorder(output, config.lab)
     recorder.start(simulation)
     return _drive(simulation, recorder, config, output, clock)
@@ -104,10 +111,19 @@ def resume_recorded(
     controller = cast(ControllerName, manifest["controller"])
     simulation = make_simulation(config, int(manifest["seed_raiz"]), controller)
     recorder = TelemetryRecorder(output, config.lab)
-    recorder.resume(loaded.extras)
+    # The restore refuses a checkpoint of another world before any telemetry is dropped.
     simulation.restore(loaded.snapshot)
+    recorder.require_resumable(loaded.extras)
+    # Later checkpoints go first: a crash here must not leave one that counts dropped parts.
+    drop_checkpoints_after(output / CHECKPOINTS_DIR, simulation.t)
+    recorder.resume(loaded.extras)
     mark_resumed(output, simulation.t, repository, clock)
     return _drive(simulation, recorder, config, output, clock)
+
+
+def is_resumable(output: Path) -> bool:
+    """Whether the run in ``output`` has a checkpoint to continue from (§11.6)."""
+    return latest_checkpoint(output / CHECKPOINTS_DIR) is not None
 
 
 def _drive(
@@ -117,7 +133,12 @@ def _drive(
     output: Path,
     clock: Clock,
 ) -> RecordedRun:
-    """Run until the end; an interruption stays resumable, and a crash leaves ``interrupted``."""
+    """Run until the end; a crash leaves ``interrupted``, and so does an interruption.
+
+    Either can resume only from a checkpoint already written (see ``is_resumable``). The
+    parts are deleted only after the manifest records the end, so that an end cut short
+    can still resume.
+    """
     outcome: Outcome = "interrupted"
     try:
         _run_ticks(simulation, recorder, config, output)
@@ -126,6 +147,8 @@ def _drive(
     except KeyboardInterrupt:
         pass
     mark_finished(output, outcome, clock)
+    if outcome != "interrupted":
+        recorder.discard_parts()
     return RecordedRun(outcome, simulation.t, state_hash(simulation.named_arrays()))
 
 

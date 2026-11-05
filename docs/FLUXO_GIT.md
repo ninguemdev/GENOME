@@ -8,7 +8,7 @@ O GENOME usa uma `main` sempre estável e um branch por fase do roadmap. O objet
 issue da fase (#N, checklist)
    └── branch fase/fN-nome  (a partir da main atualizada)
          ├── commits atômicos, Conventional Commits, Refs #N
-         └── PR "[FN] Nome da fase" → Closes #N → merge pelo usuário → branch apagado
+         └── PR "[FN] Nome da fase" → Closes #N → validação e merge pelo agente → branch apagado
 ```
 
 - **Remoto:** `origin` = `https://github.com/ninguemdev/GENOME.git`.
@@ -76,7 +76,7 @@ build(repo): adiciona numba às dependências
 ## 5. Sem coautoria
 
 - Commits, PRs, issues e comentários **não** levam `Co-Authored-By`, "Generated with Claude Code" nem qualquer marca de ferramenta.
-- A atribuição automática está desligada em `.claude/settings.json` (`attribution.commit` e `attribution.pr` vazios).
+- A atribuição automática está desligada em `.claude/settings.json` (`attribution.commit` e `attribution.pr` vazios, `attribution.sessionUrl` falso).
 - O autor é a identidade git já configurada na máquina. O agente nunca altera `user.name` nem `user.email`.
 - **Verificação antes do push:**
 
@@ -90,7 +90,8 @@ git log --format=%B origin/main..HEAD | grep -iE "co-authored-by|generated with"
 - **Título:** `[FN] Nome da fase` (ou `[FN.2] Nome — bloco 2`).
 - **Corpo:** pelo template, com resumo, itens entregues, evidência do critério de saída (números e saídas de teste), ADRs criados, como testar e `Closes #N` (no último bloco da fase) ou `Refs #N`.
 - **Checks obrigatórios:** CI verde, suíte completa, verificação de atribuição (§5).
-- **Merge:** feito pelo usuário, com "Create a merge commit", para preservar os commits atômicos. O agente nunca roda `gh pr merge`.
+- **Validação antes do merge:** feita pelo agente, sobre o SHA final do PR: suíte completa, `ruff`, `mypy`, `lint-imports`, verificação de atribuição (§5), leitura do diff contra a ARQUITETURA e CI verde. Se algo falhar, o agente corrige e valida de novo, sem fazer o merge.
+- **Merge:** feito pelo agente, com merge commit, para preservar os commits atômicos, e preso ao SHA validado: `gh pr merge N --merge --delete-branch --match-head-commit <sha>`.
 - **Depois do merge:** `git switch main && git pull --ff-only && git branch -d fase/...`. Ative em Settings do GitHub a opção "Automatically delete head branches".
 
 ## 7. Tags

@@ -157,11 +157,21 @@ class SmellFields:
         return smoothed
 
 
+def nostril_offsets(
+    heading: FloatArray, body_radius: FloatArray, side: float, sensors: SensorConfig
+) -> FloatArray:
+    """Nostrils at ``δ = 2·r_c + 1`` ahead, at ``side · alpha_olf`` from the heading (§5.3).
+
+    Returns:
+        Vectors from each body to its nostril, shape ``(n, 2)``.
+    """
+    reach = sensors.nostril_body_factor * body_radius + sensors.nostril_offset
+    angle = heading + side * sensors.alpha_olf_rad
+    return np.column_stack((reach * np.cos(angle), reach * np.sin(angle)))
+
+
 def _nostril_positions(view: CreatureView, side: float, sensors: SensorConfig) -> FloatArray:
-    """Nostrils at ``δ = 2·r_c + 1`` ahead, at ``side · alpha_olf`` from the heading (§5.3)."""
-    reach = sensors.nostril_body_factor * view.body_radius + sensors.nostril_offset
-    angle = view.heading + side * sensors.alpha_olf_rad
-    offset = np.column_stack((reach * np.cos(angle), reach * np.sin(angle)))
+    offset = nostril_offsets(view.heading, view.body_radius, side, sensors)
     return wrap_positions(view.position + offset, view.size[0], view.size[1])
 
 

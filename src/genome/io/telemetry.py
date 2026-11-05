@@ -107,21 +107,34 @@ class BlockWriter:
         self._pending = []
         self._pending_rows = 0
 
+    def require_parts(self, parts: int) -> None:
+        """Check that the first ``parts`` parts exist, by name, not just by count (ADR 0009).
+
+        Raises:
+            ValueError: If any of them is missing, as after the run was joined.
+        """
+        found = sum(self._part(index).exists() for index in range(parts))
+        if found < parts:
+            raise ValueError(f"{self._parts}: expected {parts} parts, found {found}")
+
     def rewind(self, parts: int) -> None:
         """Keep only the first ``parts`` parts, the ones a checkpoint counted (ADR 0009).
 
         Raises:
             ValueError: If any of them is missing, as after the run was joined.
         """
-        existing = sorted(self._parts.glob("*.parquet")) if self._parts.is_dir() else []
-        if len(existing) < parts:
-            raise ValueError(f"{self._parts}: expected {parts} parts, found {len(existing)}")
-        for extra in existing[parts:]:
-            extra.unlink()
+        self.require_parts(parts)
+        kept = [self._part(index).name for index in range(parts)]
+        for part in sorted(self._parts.glob("*.parquet")) if self._parts.is_dir() else []:
+            if part.name not in kept:
+                part.unlink()
         self.parts_written = parts
 
-    def finish(self) -> None:
-        """Join the parts in the final file, in blocks of ``flush_rows`` rows (§11.1)."""
+    def join(self) -> None:
+        """Join the parts in the final file, in blocks of ``flush_rows`` rows (§11.1).
+
+        The parts stay, so that an interrupted end can still resume from a checkpoint.
+        """
         self.flush()
         temporary = self._path.with_name(self._path.name + ".tmp")
         with pq.ParquetWriter(temporary, self._schema) as writer:
@@ -132,6 +145,9 @@ class BlockWriter:
             if remainder.num_rows:
                 writer.write_table(remainder)
         temporary.replace(self._path)
+
+    def discard_parts(self) -> None:
+        """Delete the parts, once the end of the run is on record (ADR 0009)."""
         if self._parts.is_dir():
             shutil.rmtree(self._parts)
 
@@ -215,12 +231,22 @@ class TelemetryRecorder:
             ),
         )
 
+    def require_resumable(self, extras: dict[str, npt.NDArray[np.generic]]) -> None:
+        """Check that the parts a checkpoint counted are all there, dropping nothing.
+
+        Raises:
+            ValueError: If a part is missing, as after the run was joined.
+        """
+        self._ticks.require_parts(int(extras["ticks_parts"][0]))
+        self._events.require_parts(int(extras["events_parts"][0]))
+
     def resume(self, extras: dict[str, npt.NDArray[np.generic]]) -> None:
         """Return to what ``checkpoint_arrays`` returned, dropping the parts after it.
 
         Raises:
             ValueError: If a part is missing, as after the run was joined.
         """
+        self.require_resumable(extras)
         self._ticks.rewind(int(extras["ticks_parts"][0]))
         self._events.rewind(int(extras["events_parts"][0]))
         ticks, births, deaths = (int(value) for value in extras["interval"])
@@ -231,8 +257,13 @@ class TelemetryRecorder:
         """Write the row of an unfinished interval and the final files (§11.1, ADR 0009)."""
         if self._interval.ticks:
             self._write_row(simulation, simulation.t - 1)
-        self._ticks.finish()
-        self._events.finish()
+        self._ticks.join()
+        self._events.join()
+
+    def discard_parts(self) -> None:
+        """Delete the parts of both tables, after the manifest records the end (ADR 0009)."""
+        self._ticks.discard_parts()
+        self._events.discard_parts()
 
     def _write_row[G](self, simulation: Simulation[G], tick: int) -> None:
         self._ticks.add(tick_row(simulation, tick, self._interval))

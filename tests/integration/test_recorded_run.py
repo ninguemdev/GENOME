@@ -12,9 +12,15 @@ from genome.core.config import GenomeConfig, config_hash, load_config
 from genome.core.tick import TickReport
 from genome.io.checkpoints import checkpoint_path
 from genome.io.manifest import CONFIG_FILE, read_manifest
-from genome.io.telemetry import EVENTS_FILE, TICKS_FILE, TelemetryRecorder
+from genome.io.telemetry import EVENTS_FILE, TICKS_FILE, BlockWriter, TelemetryRecorder
 from genome.lab.ecology import run_ecology
-from genome.lab.recorded import CHECKPOINTS_DIR, RecordedRun, resume_recorded, run_recorded
+from genome.lab.recorded import (
+    CHECKPOINTS_DIR,
+    RecordedRun,
+    is_resumable,
+    resume_recorded,
+    run_recorded,
+)
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 TICKS = 90
@@ -140,6 +146,123 @@ def test_resuming_from_an_earlier_checkpoint_also_ends_the_same(
     earlier = checkpoint_path(crashed_dir / CHECKPOINTS_DIR, T_CKPT)
     assert resume_recorded(crashed_dir, REPOSITORY, earlier, clock) == direct
     assert_same_tables(direct_dir, crashed_dir)
+
+
+def test_a_second_crash_after_returning_to_an_earlier_checkpoint_still_resumes(
+    config: GenomeConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The later checkpoints counted parts that are gone, so they must go too."""
+    chosen = lively(config)
+    direct_dir, crashed_dir = tmp_path / "direct", tmp_path / "crashed"
+    direct = direct_run(chosen, direct_dir)
+    root = crashed_dir / CHECKPOINTS_DIR
+    with monkeypatch.context() as patch:
+        interrupt_at(patch, 2 * T_CKPT + 5, KeyboardInterrupt)
+        direct_run(chosen, crashed_dir)
+    with monkeypatch.context() as patch:
+        interrupt_at(patch, T_CKPT + 5, KeyboardInterrupt)
+        resume_recorded(crashed_dir, REPOSITORY, checkpoint_path(root, T_CKPT), clock)
+    assert not checkpoint_path(root, 2 * T_CKPT).exists()
+    assert resume_recorded(crashed_dir, REPOSITORY, clock=clock) == direct
+    assert_same_tables(direct_dir, crashed_dir)
+
+
+def test_a_crash_while_returning_to_an_earlier_checkpoint_stays_resumable(
+    config: GenomeConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Later checkpoints go before the parts they counted, so none points at missing parts."""
+    chosen = lively(config)
+    direct_dir, crashed_dir = tmp_path / "direct", tmp_path / "crashed"
+    direct = direct_run(chosen, direct_dir)
+    root = crashed_dir / CHECKPOINTS_DIR
+    with monkeypatch.context() as patch:
+        interrupt_at(patch, 2 * T_CKPT + 5, KeyboardInterrupt)
+        direct_run(chosen, crashed_dir)
+
+    def failing(self: TelemetryRecorder, extras: object) -> None:
+        raise RuntimeError
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TelemetryRecorder, "resume", failing)
+        with pytest.raises(RuntimeError):
+            resume_recorded(crashed_dir, REPOSITORY, checkpoint_path(root, T_CKPT), clock)
+    assert resume_recorded(crashed_dir, REPOSITORY, clock=clock) == direct
+    assert_same_tables(direct_dir, crashed_dir)
+
+
+def test_a_refused_resume_keeps_the_later_checkpoints(config: GenomeConfig, tmp_path: Path) -> None:
+    direct_run(lively(config), tmp_path)
+    root = tmp_path / CHECKPOINTS_DIR
+    with pytest.raises(ValueError, match="parts"):
+        resume_recorded(tmp_path, REPOSITORY, checkpoint_path(root, T_CKPT), clock)
+    assert checkpoint_path(root, 2 * T_CKPT).is_dir()
+
+
+def test_a_checkpoint_of_another_world_drops_no_telemetry(
+    config: GenomeConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chosen = lively(config)
+    direct_dir, crashed_dir, other_dir = tmp_path / "direct", tmp_path / "crashed", tmp_path / "o"
+    direct = direct_run(chosen, direct_dir)
+    with monkeypatch.context() as patch:
+        interrupt_at(patch, 2 * T_CKPT + 5, RuntimeError)
+        with pytest.raises(RuntimeError):
+            direct_run(chosen, crashed_dir)
+        with pytest.raises(RuntimeError):
+            run_recorded(chosen, 4, "random", other_dir, REPOSITORY, clock)
+    foreign = checkpoint_path(other_dir / CHECKPOINTS_DIR, T_CKPT)
+    with pytest.raises(ValueError, match="another world"):
+        resume_recorded(crashed_dir, REPOSITORY, foreign, clock)
+    assert read_manifest(crashed_dir)["resumed"] == []
+    assert resume_recorded(crashed_dir, REPOSITORY, clock=clock) == direct
+    assert_same_tables(direct_dir, crashed_dir)
+
+
+def test_a_world_that_cannot_be_built_leaves_no_run_behind(
+    config: GenomeConfig, tmp_path: Path
+) -> None:
+    continuous = load_config(CONFIGS / "continuous.yaml")
+    with pytest.raises(NotImplementedError):
+        run_recorded(continuous, 3, "immobile", tmp_path / "a", REPOSITORY, clock)
+    assert not (tmp_path / "a").exists()
+    direct_run(lively(config), tmp_path / "a")
+
+
+def test_an_end_cut_short_between_the_two_tables_still_resumes(
+    config: GenomeConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chosen = lively(config)
+    direct_dir, crashed_dir = tmp_path / "direct", tmp_path / "crashed"
+    direct = direct_run(chosen, direct_dir)
+    original = BlockWriter.join
+
+    def failing(self: BlockWriter) -> None:
+        if self._path.name == EVENTS_FILE:
+            raise RuntimeError
+        original(self)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(BlockWriter, "join", failing)
+        with pytest.raises(RuntimeError):
+            direct_run(chosen, crashed_dir)
+    assert read_manifest(crashed_dir)["outcome"] == "interrupted"
+    assert resume_recorded(crashed_dir, REPOSITORY, clock=clock) == direct
+    assert_same_tables(direct_dir, crashed_dir)
+    assert not (crashed_dir / f"{TICKS_FILE}.parts").exists()
+
+
+def test_a_run_says_whether_it_can_resume(
+    config: GenomeConfig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chosen = lively(config)
+    with monkeypatch.context() as patch:
+        interrupt_at(patch, 5, KeyboardInterrupt)
+        assert direct_run(chosen, tmp_path / "early").outcome == "interrupted"
+    assert not is_resumable(tmp_path / "early")
+    with monkeypatch.context() as patch:
+        interrupt_at(patch, T_CKPT + 5, KeyboardInterrupt)
+        direct_run(chosen, tmp_path / "late")
+    assert is_resumable(tmp_path / "late")
 
 
 def test_extinction_is_the_outcome_of_an_empty_world(config: GenomeConfig, tmp_path: Path) -> None:

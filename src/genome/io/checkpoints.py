@@ -64,14 +64,15 @@ def checkpoint_path(root: Path, tick: int) -> Path:
 
 def latest_checkpoint(root: Path) -> Path | None:
     """The checkpoint directory of the highest tick under ``root``, if there is any."""
-    if not root.is_dir():
-        return None
-    ticks = [
-        int(entry.name.removeprefix(CHECKPOINT_PREFIX))
-        for entry in sorted(root.iterdir())
-        if entry.is_dir() and entry.name.removeprefix(CHECKPOINT_PREFIX).isdecimal()
-    ]
+    ticks = _checkpoint_ticks(root)
     return checkpoint_path(root, max(ticks)) if ticks else None
+
+
+def drop_checkpoints_after(root: Path, tick: int) -> None:
+    """Delete the checkpoints later than ``tick``, whose telemetry was just rewound (ADR 0009)."""
+    for later in _checkpoint_ticks(root):
+        if later > tick:
+            shutil.rmtree(checkpoint_path(root, later))
 
 
 def save_checkpoint[G](
@@ -133,6 +134,16 @@ def load_checkpoint[G](
     genomes = tuple((int(entry["slot"]), codec.decode(entry["genome"])) for entry in entries)
     streams = json.loads((path / RNG_FILE).read_text(encoding="utf-8"))
     return LoadedCheckpoint(SimulationSnapshot(arrays, streams, genomes), extras)
+
+
+def _checkpoint_ticks(root: Path) -> list[int]:
+    if not root.is_dir():
+        return []
+    return [
+        int(entry.name.removeprefix(CHECKPOINT_PREFIX))
+        for entry in sorted(root.iterdir())
+        if entry.is_dir() and entry.name.removeprefix(CHECKPOINT_PREFIX).isdecimal()
+    ]
 
 
 def _npz_arrays(

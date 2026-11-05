@@ -6,12 +6,13 @@ Usage:
 """
 
 import argparse
+import sys
 from pathlib import Path
 from typing import cast, get_args
 
 from genome.core.config import load_config
 from genome.lab.ecology import ControllerName
-from genome.lab.recorded import RecordedRun, resume_recorded, run_recorded
+from genome.lab.recorded import RecordedRun, is_resumable, resume_recorded, run_recorded
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 DEFAULT_PRESET = REPOSITORY / "configs" / "f1_ecology.yaml"
@@ -34,6 +35,12 @@ def main() -> None:
         controller = cast(ControllerName, args.controller)
         result = run_recorded(config, args.seed, controller, args.output, REPOSITORY)
     print(f"outcome={result.outcome} ticks={result.ticks} hash={result.final_hash}")
+    if result.outcome == "interrupted" and not is_resumable(args.output):
+        print(
+            f"warning: no checkpoint was written, so {args.output} cannot be resumed; "
+            "delete it to start again, or use a smaller lab.t_ckpt",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

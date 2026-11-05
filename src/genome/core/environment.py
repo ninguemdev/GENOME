@@ -76,11 +76,7 @@ class Environment:
         ]
 
     def load_arrays(self, saved: SavedArrays) -> None:
-        """Return to a saved state (§11.6); water goes first, because it checks the world.
-
-        Raises:
-            ValueError: If the snapshot belongs to another world.
-        """
+        """Return to a saved state, already checked by ``Simulation.restore`` (§11.6)."""
         self.water.load_arrays(saved)
         self.climate.load_arrays(saved)
         self.plants.load_arrays(saved)

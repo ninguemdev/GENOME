@@ -169,7 +169,7 @@ def restore_streams(state: dict[str, GeneratorState]) -> WorldStreams:
     Raises:
         ValueError: If a stream is missing or a state is invalid.
     """
-    _require_all_streams(state)
+    require_stream_states(state)
     return WorldStreams(
         world=restore_generator(state["world"]),
         climate=restore_generator(state["climate"]),
@@ -184,18 +184,28 @@ def set_streams_state(streams: WorldStreams, state: dict[str, GeneratorState]) -
     Raises:
         ValueError: If a stream is missing or a state is invalid.
     """
-    _require_all_streams(state)
+    require_stream_states(state)
     set_generator_state(streams.world, state["world"])
     set_generator_state(streams.climate, state["climate"])
     set_generator_state(streams.plants, state["plants"])
     set_generator_state(streams.creatures, state["creatures"])
 
 
-def _require_all_streams(state: dict[str, GeneratorState]) -> None:
+def require_stream_states(state: dict[str, GeneratorState]) -> None:
+    """Check the states of the four streams without touching any generator (§11.6).
+
+    Raises:
+        ValueError: If a stream is missing or its state is not a PCG64 state.
+    """
     expected = ("world", "climate", "plants", "creatures")
     missing = [name for name in expected if name not in state]
     if missing:
         raise ValueError(f"missing stream states: {missing}")
+    for name in expected:
+        try:
+            restore_generator(state[name])
+        except (KeyError, TypeError, AttributeError) as error:
+            raise ValueError(f"invalid state in stream {name!r}") from error
 
 
 def _world_streams(entropy: int, domain: Domain, g: int, k: int) -> WorldStreams:

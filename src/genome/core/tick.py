@@ -22,11 +22,16 @@ from genome.core.metabolism import Income, MetabolismFlows, apply_metabolism
 from genome.core.physics import integrate_locomotion
 from genome.core.protocols import OUTPUT_MEMORY, Brain, GenomeOperators
 from genome.core.reproduction import BirthPlan, plan_births
-from genome.core.rng import WorldStreams, set_streams_state, streams_state
+from genome.core.rng import (
+    WorldStreams,
+    require_stream_states,
+    set_streams_state,
+    streams_state,
+)
 from genome.core.sensors.observation import build_observations
 from genome.core.sensors.pairs import view_creatures
-from genome.core.snapshot import SavedArrays, SimulationSnapshot
-from genome.core.state import CreatureState
+from genome.core.snapshot import GROWING_ARRAYS, SimulationSnapshot, require_same_shapes
+from genome.core.state import CreatureState, active_slots
 from genome.core.state_hash import NamedArray
 
 FloatArray = npt.NDArray[np.float64]
@@ -183,14 +188,15 @@ class Simulation[G]:
         """Return to a snapshot of this same world, so that the run continues as if direct.
 
         Implements ARQUITETURA §2.1 and §11.6. The streams are rewound in place, because
-        the brain and the plants hold references to them.
+        the brain and the plants hold references to them. Everything is checked before
+        the first write, so a refused snapshot leaves this world as it was.
 
         Raises:
-            ValueError: If the snapshot belongs to another world, or its genomes do not
-                match its live creatures.
+            ValueError: If the snapshot belongs to another world, its arrays have other
+                names or shapes, or its genomes do not match its live creatures.
         """
+        self._require_restorable(snapshot)
         saved = dict(snapshot.arrays)
-        self._require_same_names(saved)
         self.environment.load_arrays(saved)
         for slot in self.state.pool.active().tolist():
             self._brain.release(slot)
@@ -201,16 +207,25 @@ class Simulation[G]:
         set_streams_state(self._streams, snapshot.streams)
         self._install_genomes(snapshot.genomes)
 
-    def _require_same_names(self, saved: SavedArrays) -> None:
-        own = [name for name, _ in self.named_arrays()]
-        different = sorted(set(own) ^ set(saved))
-        if different:
+    def _require_restorable(self, snapshot: SimulationSnapshot[G]) -> None:
+        current = self.named_arrays()
+        own = sorted(name for name, _ in current)
+        theirs = sorted(name for name, _ in snapshot.arrays)
+        if own != theirs:
+            different = [name for name in own if name not in theirs]
+            different += [name for name in theirs if name not in own]
             raise ValueError(f"the snapshot does not match this simulation: {different}")
+        saved = dict(snapshot.arrays)
+        self.environment.water.require_same_geography(saved)
+        require_same_shapes([pair for pair in current if pair[0] not in GROWING_ARRAYS], saved)
+        if saved["climate.rain"].ndim != 1:
+            raise ValueError("the snapshot does not match this simulation: climate.rain")
+        require_stream_states(snapshot.streams)
+        live = active_slots(saved["creatures.alive"], saved["creatures.ids"])
+        if [slot for slot, _ in snapshot.genomes] != live.tolist():
+            raise ValueError("the genomes of the snapshot do not match its live creatures")
 
     def _install_genomes(self, genomes: Sequence[tuple[int, G]]) -> None:
-        slots = [slot for slot, _ in genomes]
-        if slots != self.state.pool.active().tolist():
-            raise ValueError("the genomes of the snapshot do not match its live creatures")
         for slot, genome in genomes:
             own = self._operators.clone(genome)
             self._genomes[slot] = own

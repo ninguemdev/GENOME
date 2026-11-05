@@ -26,6 +26,12 @@ NO_ID = -1
 UNIRRIGATED = -1
 
 
+def active_slots(alive: npt.NDArray[np.generic], ids: npt.NDArray[np.generic]) -> IntArray:
+    """Occupied slots of the arrays of a pool, sorted by identifier (§2.5)."""
+    slots = np.flatnonzero(alive).astype(np.int64)
+    return slots[np.argsort(ids[slots], kind="stable")]
+
+
 class SlotPool:
     """Fixed-capacity slot allocator with monotonic identifiers (§2.1, §2.5).
 
@@ -85,8 +91,7 @@ class SlotPool:
 
     def active(self) -> IntArray:
         """Occupied slots sorted by identifier (§2.5)."""
-        slots = np.flatnonzero(self.alive).astype(np.int64)
-        return slots[np.argsort(self.ids[slots], kind="stable")]
+        return active_slots(self.alive, self.ids)
 
     def named_arrays(self, prefix: str) -> list[NamedArray]:
         """Arrays that define the pool, for ``state_hash``."""

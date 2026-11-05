@@ -13,6 +13,7 @@ from typing import Literal
 RunMode = Literal["training", "continuous"]
 ReproductionMode = Literal["mixed", "asexual", "sexual"]
 TopologyGenesis = Literal["dense_starter", "sparse_starter"]
+ProcessPriority = Literal["normal", "above_normal"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,6 +300,8 @@ class LabConfig:
     flush_rows: int
     max_cap_fraction: float
     exit_min_ticks: int
+    cpu_fraction: float
+    process_priority: ProcessPriority
     heuristic_thirst_threshold: float
     heuristic_hunger_threshold: float
     heuristic_drink_until: float

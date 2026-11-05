@@ -262,6 +262,7 @@ def _check_lab(lab: LabConfig, errors: Errors) -> None:
     errors += _unit_interval(lab, "lab", "heuristic_drink_until", "heuristic_crowding_limit")
     errors += _non_negative(lab, "lab", "heuristic_turn_gain", "heuristic_memory_step")
     _require(errors, lab.n_seeds >= lab.n_seeds_min, "lab.n_seeds must be >= n_seeds_min (§10.3)")
+    _require(errors, 0.0 < lab.cpu_fraction <= 1.0, "lab.cpu_fraction must be in (0, 1] (§12.5)")
 
 
 def _check_heuristic(config: GenomeConfig, errors: Errors) -> None:

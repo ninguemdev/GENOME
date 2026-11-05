@@ -1,21 +1,28 @@
 """Creature-object pairs generated at once, shared by vision and touch (ARQUITETURA §12.5).
 
-Rows follow identifier order. Creature pairs are sorted by observer and target,
-so that the sum of the density channel never depends on the tree or on the slots
-(§2.5, §7.3); every other use of pairs is a maximum or a mark, free of order.
+Rows follow identifier order. Pairs are sorted by observer and target, so that the sum of
+the density channel never depends on the grid or on the slots (§2.5, §7.3); every other use
+of pairs is a maximum or a mark, free of order.
 """
 
 from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
-from scipy.spatial import cKDTree
 
 from genome.core.kernels import jit
-from genome.core.state import CreatureState, PlantState
+from genome.core.state import CreatureState, PairBuffer, PairBuffers, PlantState
 
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
+
+#: Returned by the kernel when the pairs do not fit in the buffer.
+BUFFER_TOO_SMALL = -1
+#: Grid cells and the coarse test reach this much beyond the radius, relative to it and to the
+#: side of the world, so that rounding can never lose a pair that the exact test would keep:
+#: the exact vector rounds at the scale of the side, even for a radius near zero.
+RADIUS_MARGIN = 1.0 + 1e-9
+SIDE_MARGIN = 1e-12
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +40,7 @@ class CreatureView:
         energy, hydration, e_max, h_max: Reserves and their maxima (§5.5).
         memory: Memory register of the previous tick (§6.1).
         size: Torus sides ``(W, H)``.
-        tree: Spatial tree of the positions.
+        buffers: Memory the pair queries of this tick write to.
     """
 
     slots: IntArray
@@ -55,7 +62,7 @@ class CreatureView:
     h_max: FloatArray
     memory: FloatArray
     size: tuple[float, float]
-    tree: cKDTree
+    buffers: PairBuffers
 
     @property
     def count(self) -> int:
@@ -87,7 +94,7 @@ def view_creatures(state: CreatureState, size: tuple[float, float]) -> CreatureV
         h_max=state.h_max[slots],
         memory=state.memory[slots],
         size=size,
-        tree=cKDTree(position, boxsize=np.array(size)),
+        buffers=state.pair_buffers,
     )
 
 
@@ -108,75 +115,174 @@ class Pairs:
     dy: FloatArray
     distance: FloatArray
 
-    def select(self, mask: npt.NDArray[np.bool_]) -> "Pairs":
-        """The pairs where ``mask`` holds, in the same order."""
-        return Pairs(
-            self.observer[mask],
-            self.target[mask],
-            self.dx[mask],
-            self.dy[mask],
-            self.distance[mask],
-        )
+
+def pair_vector_py(
+    ox: float, oy: float, tx: float, ty: float, width: float, height: float
+) -> tuple[float, float, float]:
+    """Minimum-image vector and length of one pair (§3.1), as in ``space.displacement``."""
+    half_w, half_h = width / 2.0, height / 2.0
+    wrapped_x = (tx - ox + half_w) % width
+    wrapped_y = (ty - oy + half_h) % height
+    dx = (0.0 if wrapped_x >= width else wrapped_x) - half_w
+    dy = (0.0 if wrapped_y >= height else wrapped_y) - half_h
+    return dx, dy, np.sqrt(dx * dx + dy * dy)
 
 
-def pair_vectors_py(
+pair_vector = jit(pair_vector_py)
+
+
+def cells_per_side_py(side: float, reach: float, limit: int) -> int:
+    """Cells along one side of the torus, none narrower than ``reach`` (§12.5).
+
+    The limit keeps a tiny reach from asking for more cells than there are targets.
+    """
+    return max(1, min(limit, int(side / reach)))
+
+
+cells_per_side = jit(cells_per_side_py)
+
+
+def fill_pairs_py(
     observers: FloatArray,
     targets: FloatArray,
-    observer: IntArray,
-    target: IntArray,
+    radius: float,
     width: float,
     height: float,
-) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """Minimum-image vector and length of each pair (§3.1), as in ``space.displacement``."""
-    dx = np.empty(observer.size, dtype=np.float64)
-    dy = np.empty(observer.size, dtype=np.float64)
-    length = np.empty(observer.size, dtype=np.float64)
+    skip_self: bool,
+    out_observer: IntArray,
+    out_target: IntArray,
+    out_dx: FloatArray,
+    out_dy: FloatArray,
+    out_distance: FloatArray,
+) -> int:
+    """Write the pairs within ``radius``, sorted by observer and target (§2.5, §3.1, §12.5).
+
+    A uniform grid over the torus: only the 3 × 3 cells around each observer can hold a
+    target in reach, since every cell is wider than the radius. A coarse test on the
+    absolute differences discards most candidates before the exact vector is computed.
+
+    Returns:
+        Number of pairs written, or ``BUFFER_TOO_SMALL`` if they do not fit.
+    """
+    m = targets.shape[0]
+    limit = int(np.ceil(np.sqrt(m))) + 1
+    coarse = radius * RADIUS_MARGIN + max(width, height) * SIDE_MARGIN
+    nx = cells_per_side(width, coarse, limit)
+    ny = cells_per_side(height, coarse, limit)
+    # Counting sort, stable, so the targets of each cell stay in increasing order.
+    cell_of = np.empty(m, dtype=np.int64)
+    start = np.zeros(nx * ny + 1, dtype=np.int64)
+    for b in range(m):
+        cx = min(int(targets[b, 0] / width * nx), nx - 1)
+        cy = min(int(targets[b, 1] / height * ny), ny - 1)
+        cell_of[b] = cx * ny + cy
+        start[cell_of[b] + 1] += 1
+    for cell in range(nx * ny):
+        start[cell + 1] += start[cell]
+    items = np.empty(m, dtype=np.int64)
+    filled = start[:-1].copy()
+    for b in range(m):
+        items[filled[cell_of[b]]] = b
+        filled[cell_of[b]] += 1
+
     half_w, half_h = width / 2.0, height / 2.0
-    for p in range(observer.size):
-        a, b = observer[p], target[p]
-        wrapped_x = (targets[b, 0] - observers[a, 0] + half_w) % width
-        wrapped_y = (targets[b, 1] - observers[a, 1] + half_h) % height
-        dx[p] = (0.0 if wrapped_x >= width else wrapped_x) - half_w
-        dy[p] = (0.0 if wrapped_y >= height else wrapped_y) - half_h
-        length[p] = np.sqrt(dx[p] * dx[p] + dy[p] * dy[p])
-    return dx, dy, length
+    capacity = out_observer.size
+    count = 0
+    for a in range(observers.shape[0]):
+        ox, oy = observers[a, 0], observers[a, 1]
+        cx = min(int(ox / width * nx), nx - 1)
+        cy = min(int(oy / height * ny), ny - 1)
+        # With fewer than 3 cells on a side, the neighbours would repeat: visit each once.
+        first_x, span_x = (cx - 1, 3) if nx >= 3 else (0, nx)
+        first_y, span_y = (cy - 1, 3) if ny >= 3 else (0, ny)
+        row_start = count
+        for ix in range(span_x):
+            column = (first_x + ix) % nx
+            for iy in range(span_y):
+                cell = column * ny + (first_y + iy) % ny
+                for index in range(start[cell], start[cell + 1]):
+                    b = items[index]
+                    if skip_self and b == a:
+                        continue
+                    gap_x = abs(targets[b, 0] - ox)
+                    if gap_x > half_w:
+                        gap_x = width - gap_x
+                    if gap_x > coarse:
+                        continue
+                    gap_y = abs(targets[b, 1] - oy)
+                    if gap_y > half_h:
+                        gap_y = height - gap_y
+                    if gap_y > coarse or gap_x * gap_x + gap_y * gap_y > coarse * coarse:
+                        continue
+                    if count >= capacity:
+                        return BUFFER_TOO_SMALL
+                    out_target[count] = b
+                    count += 1
+        out_target[row_start:count].sort()
+        kept = row_start
+        for p in range(row_start, count):
+            b = out_target[p]
+            dx, dy, length = pair_vector(ox, oy, targets[b, 0], targets[b, 1], width, height)
+            if length > radius:
+                continue
+            out_observer[kept] = a
+            out_target[kept] = b
+            out_dx[kept] = dx
+            out_dy[kept] = dy
+            out_distance[kept] = length
+            kept += 1
+        count = kept
+    return count
 
 
-pair_vectors = jit(pair_vectors_py)
+fill_pairs = jit(fill_pairs_py)
 
 
 def find_pairs(
     view: CreatureView,
-    tree: cKDTree,
     targets: FloatArray,
     radius: float,
-    ordered: bool = False,
+    buffer: PairBuffer,
+    skip_self: bool = False,
 ) -> Pairs:
-    """All pairs within ``radius`` (§12.5).
-
-    Self pairs are the caller's concern: the tree returns them, and it also keeps
-    pairs at distance zero, so a distance test could not tell them apart.
+    """All pairs within ``radius``, sorted by observer and target (§2.5, §12.5).
 
     Args:
         view: The observers.
-        tree: Spatial tree of ``targets``.
         targets: Target positions, shape ``(m, 2)``.
         radius: Query radius.
-        ordered: Sort by observer and target. Sums need it (§2.5); maxima and
-            boolean marks are independent of order and can skip the cost.
+        buffer: Where the pairs are written; they are valid until its next use.
+        skip_self: Whether targets are the observers themselves, without the pair of each
+            row with itself. A distance test could not tell it from two bodies in one place.
     """
     if view.count == 0 or targets.shape[0] == 0:
         empty = np.zeros(0, dtype=np.int64)
         return Pairs(empty, empty, np.zeros(0), np.zeros(0), np.zeros(0))
-    found = view.tree.sparse_distance_matrix(tree, radius, output_type="ndarray")
-    observer = found["i"].astype(np.int64)
-    target = found["j"].astype(np.int64)
-    if ordered:
-        order = np.argsort(observer * targets.shape[0] + target)
-        observer, target = observer[order], target[order]
     width, height = view.size
-    dx, dy, length = pair_vectors(view.position, targets, observer, target, width, height)
-    return Pairs(observer, target, dx, dy, length)
+    while True:
+        count = fill_pairs(
+            view.position,
+            targets,
+            radius,
+            width,
+            height,
+            skip_self,
+            buffer.observer,
+            buffer.target,
+            buffer.dx,
+            buffer.dy,
+            buffer.distance,
+        )
+        if count != BUFFER_TOO_SMALL:
+            break
+        buffer.grow()
+    return Pairs(
+        buffer.observer[:count],
+        buffer.target[:count],
+        buffer.dx[:count],
+        buffer.dy[:count],
+        buffer.distance[:count],
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,18 +310,24 @@ def build_scene(view: CreatureView, plants: PlantState, vision_radius: float) ->
     The query radius is the larger of the vision radius and the touch reach, so
     that both senses filter the same pairs (§5.2, §5.4).
     """
-    plant_slots, plant_tree = plants.live_tree(view.size)
-    plant_position = plants.position[plant_slots]
+    plant_slots = plants.live_slots()
     touch_plant, touch_creature = _touch_reach(view)
-    plant_pairs = find_pairs(view, plant_tree, plant_position, max(vision_radius, touch_plant))
-    creature_pairs = find_pairs(
-        view, view.tree, view.position, max(vision_radius, touch_creature), ordered=True
-    )
     return Scene(
         view=view,
         plant_biomass=plants.biomass[plant_slots],
-        plant_pairs=plant_pairs,
-        creature_pairs=creature_pairs.select(creature_pairs.observer != creature_pairs.target),
+        plant_pairs=find_pairs(
+            view,
+            plants.position[plant_slots],
+            max(vision_radius, touch_plant),
+            view.buffers.plants,
+        ),
+        creature_pairs=find_pairs(
+            view,
+            view.position,
+            max(vision_radius, touch_creature),
+            view.buffers.creatures,
+            skip_self=True,
+        ),
         vision_radius=vision_radius,
     )
 

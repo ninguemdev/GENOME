@@ -23,6 +23,15 @@ CHANNELS = 4
 OUT_OF_SIGHT = -1.0
 
 
+def color_similarity_py(a: float, b: float) -> float:
+    """sim(c₁, c₂) = 1 − 2·Δc, with Δc the circular distance between colours (§5.2)."""
+    delta = abs(a - b)
+    return 1.0 - 2.0 * min(delta, 1.0 - delta)
+
+
+color_similarity = jit(color_similarity_py)
+
+
 def sight_py(
     dx: float, dy: float, distance: float, heading: float, view_limits: FloatArray
 ) -> tuple[float, float]:
@@ -101,8 +110,7 @@ def creature_retina_py(
         theta, scale = sight(dx[p], dy[p], distance[p], heading[row], view_limits)
         if scale == OUT_OF_SIGHT:
             continue
-        delta = abs(color[row] - color[target[p]])
-        similarity = 1.0 - 2.0 * min(delta, 1.0 - delta)
+        similarity = color_similarity(color[row], color[target[p]])
         for j in range(mu.size):
             offset = (theta - mu[j]) / sigma[j]
             signal = scale * np.exp(-0.5 * offset * offset)
@@ -191,12 +199,6 @@ def make_retina(radius: float, sensors: SensorConfig) -> Retina:
     )
 
 
-def color_similarity(a: FloatArray, b: FloatArray) -> FloatArray:
-    """sim(c₁, c₂) = 1 − 2·Δc, with Δc the circular distance between colours (§5.2)."""
-    delta = np.abs(a - b)
-    return 1.0 - 2.0 * np.minimum(delta, 1.0 - delta)
-
-
 def vision_channels(scene: Scene, water: Water, config: GenomeConfig) -> FloatArray:
     """The 24 visual inputs: food, water, density and affinity (§5.2, §5.5).
 
@@ -280,7 +282,7 @@ def _water_channel(view: CreatureView, water: Water, retina: Retina) -> FloatArr
 def _river_pairs(view: CreatureView, rivers: Rivers, retina: Retina) -> tuple[Pairs, FloatArray]:
     """River samples seen at their distance to the bank, with weight one (§3.2, §5.2)."""
     half_width = rivers.width / 2.0
-    pairs = find_pairs(view, rivers.sample_tree, rivers.samples, retina.radius + half_width)
+    pairs = find_pairs(view, rivers.samples, retina.radius + half_width, view.buffers.rivers)
     margin = np.maximum(0.0, pairs.distance - half_width)
     banked = Pairs(pairs.observer, pairs.target, pairs.dx, pairs.dy, margin)
     return banked, np.ones(pairs.observer.size)

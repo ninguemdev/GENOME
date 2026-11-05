@@ -141,13 +141,12 @@ def test_restore_forgets_the_cached_observation(config: GenomeConfig) -> None:
     assert full_hash(other) == full_hash(direct)
 
 
-def test_restore_forgets_the_plant_tree(config: GenomeConfig) -> None:
+def test_restore_forgets_the_live_plant_slots(config: GenomeConfig) -> None:
     simulation = make_simulation(small(config), 3, "immobile")
     snapshot = simulation.snapshot()
-    size = simulation.environment.size
-    simulation.environment.plants.live_tree(size)
+    simulation.environment.plants.live_slots()
     simulation.restore(snapshot)
-    assert simulation.environment.plants._live_tree is None
+    assert simulation.environment.plants._live_slots is None
 
 
 def test_restore_refuses_another_world(config: GenomeConfig) -> None:

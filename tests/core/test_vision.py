@@ -9,11 +9,20 @@ from numpy.testing import assert_allclose, assert_array_equal
 
 from genome.core.config import GenomeConfig, load_config
 from genome.core.rng import continuous_world_streams
-from genome.core.sensors.pairs import find_pairs, pair_vectors, pair_vectors_py
+from genome.core.sensors.pairs import (
+    BUFFER_TOO_SMALL,
+    cells_per_side_py,
+    fill_pairs,
+    fill_pairs_py,
+    find_pairs,
+    pair_vector,
+    pair_vector_py,
+)
 from genome.core.sensors.vision import (
     OUT_OF_SIGHT,
     RECEPTORS,
     color_similarity,
+    color_similarity_py,
     creature_retina,
     creature_retina_py,
     make_retina,
@@ -26,7 +35,7 @@ from genome.core.sensors.vision import (
     vision_radius,
 )
 from genome.core.space import displacement, wrap_angle, wrap_positions
-from genome.core.state import CreatureState, PlantState
+from genome.core.state import CreatureState, PairBuffer, PlantState
 from tests.conftest import CONFIGS
 from tests.core.scenes import Point, make_creatures, make_plants, scene_of, view_of
 from tests.core.worlds import SIDE, dry_world, pond_world, river_world
@@ -58,10 +67,13 @@ def test_vision_radius_shrinks_at_night(config: GenomeConfig) -> None:
     assert vision_radius(0.0, config.sensors) == 20.0
 
 
-def test_color_similarity_is_circular() -> None:
-    a = np.array([0.1, 0.0, 0.3, 0.05])
-    b = np.array([0.9, 0.5, 0.3, 0.95])
-    assert_allclose(color_similarity(a, b), [0.6, 0.0, 1.0, 0.8])
+@pytest.mark.parametrize("kernel", [color_similarity, color_similarity_py])
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [(0.1, 0.9, 0.6), (0.0, 0.5, 0.0), (0.3, 0.3, 1.0), (0.05, 0.95, 0.8)],
+)
+def test_color_similarity_is_circular(kernel: Any, a: float, b: float, expected: float) -> None:
+    assert_allclose(kernel(a, b), expected)
 
 
 def test_sight_rejects_what_is_out_of_reach_or_out_of_the_field(config: GenomeConfig) -> None:
@@ -163,7 +175,7 @@ def test_creature_retina_sums_and_keeps_the_best_affinity(
     for index, signal in zip(kept.tolist(), signals, strict=True):
         row = pairs["observer"][index]
         expected_total[row] += signal
-        similarity = color_similarity(color[row : row + 1], color[pairs["target"][index:]][:1])[0]
+        similarity = color_similarity_py(color[row], color[pairs["target"][index]])
         expected_affinity[row] = np.maximum(expected_affinity[row], similarity * signal)
     assert_array_equal(total, expected_total)
     assert_array_equal(affinity, expected_affinity)
@@ -249,19 +261,141 @@ def test_retina_kernel_matches_the_formula_and_its_python_version(config: Genome
     assert_allclose(signals, (window * falloff)[:, None] * np.exp(-0.5 * offset * offset))
 
 
-def test_pair_vectors_kernel_matches_space_displacement() -> None:
+@pytest.mark.parametrize("kernel", [pair_vector, pair_vector_py])
+def test_pair_vector_matches_space_displacement(kernel: Any) -> None:
     rng = continuous_world_streams(4).creatures
     a, b = rng.uniform(0.0, SIDE, (200, 2)), rng.uniform(0.0, SIDE, (200, 2))
-    index = np.arange(200, dtype=np.int64)
     expected = displacement(a, b, SIDE, SIDE)
-    for kernel in (pair_vectors, pair_vectors_py):
-        dx, dy, length = kernel(a, b, index, index, SIDE, SIDE)
-        assert_allclose(np.column_stack((dx, dy)), expected, rtol=1e-12, atol=1e-12)
-        assert_allclose(length, np.hypot(expected[:, 0], expected[:, 1]))
+    for p in range(200):
+        dx, dy, length = kernel(a[p, 0], a[p, 1], b[p, 0], b[p, 1], SIDE, SIDE)
+        assert dx == expected[p, 0]
+        assert dy == expected[p, 1]
+        assert_allclose(length, math.hypot(dx, dy))
+
+
+def brute_force_pairs(
+    observers: np.ndarray,
+    targets: np.ndarray,
+    radius: float,
+    size: tuple[float, float],
+    skip_self: bool,
+) -> list[tuple[int, int]]:
+    """Every pair within ``radius`` by the definition, without a grid (§3.1)."""
+    vector = displacement(observers[:, None, :], targets[None, :, :], size[0], size[1])
+    length = np.hypot(vector[..., 0], vector[..., 1])
+    rows, columns = np.nonzero(length <= radius)
+    return [
+        (a, b)
+        for a, b in zip(rows.tolist(), columns.tolist(), strict=True)
+        if not (skip_self and a == b)
+    ]
+
+
+def filled_pairs(
+    kernel: Any,
+    observers: np.ndarray,
+    targets: np.ndarray,
+    radius: float,
+    size: tuple[float, float],
+    skip_self: bool,
+    capacity: int,
+) -> tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    observer = np.empty(capacity, dtype=np.int64)
+    target = np.empty(capacity, dtype=np.int64)
+    dx, dy, distance = np.empty(capacity), np.empty(capacity), np.empty(capacity)
+    count = kernel(
+        observers, targets, radius, size[0], size[1], skip_self, observer, target, dx, dy, distance
+    )
+    return count, observer, target, dx, dy, distance
+
+
+COORDINATE = st.floats(0.0, 1.0, allow_nan=False, exclude_max=True)
+POINTS = st.lists(st.tuples(COORDINATE, COORDINATE), max_size=25)
+
+
+@settings(max_examples=200)
+@given(
+    POINTS,
+    POINTS,
+    st.floats(0.0, 1.5),
+    st.sampled_from([(100.0, 100.0), (100.0, 7.0), (5.0, 300.0), (256.0, 256.0)]),
+    st.booleans(),
+)
+def test_grid_finds_the_same_pairs_as_brute_force(
+    observers: list[tuple[float, float]],
+    targets: list[tuple[float, float]],
+    reach: float,
+    size: tuple[float, float],
+    skip_self: bool,
+) -> None:
+    """Across the seam, with few cells, tiny radii and a radius beyond half the torus."""
+    if skip_self:
+        targets = observers
+    if not observers or not targets:
+        return
+    scale = np.array(size)
+    a = np.array(observers).reshape(-1, 2) * scale
+    b = np.array(targets).reshape(-1, 2) * scale
+    radius = reach * min(size)
+    expected = brute_force_pairs(a, b, radius, size, skip_self)
+    count, observer, target, dx, dy, distance = filled_pairs(
+        fill_pairs, a, b, radius, size, skip_self, len(observers) * len(targets) + 1
+    )
+    found = list(zip(observer[:count].tolist(), target[:count].tolist(), strict=True))
+    assert found == expected
+    vector = displacement(a[observer[:count]], b[target[:count]], size[0], size[1])
+    assert_array_equal(dx[:count], vector[:, 0])
+    assert_array_equal(dy[:count], vector[:, 1])
+    assert_allclose(distance[:count], np.hypot(vector[:, 0], vector[:, 1]))
+
+
+def test_plain_grid_kernel_matches_the_compiled_one() -> None:
+    rng = continuous_world_streams(5).creatures
+    a, b = rng.uniform(0.0, SIDE, (30, 2)), rng.uniform(0.0, SIDE, (40, 2))
+    size = (SIDE, SIDE)
+    for radius in (0.0, 8.0, 2.0 * SIDE):
+        compiled = filled_pairs(fill_pairs, a, b, radius, size, False, 2000)
+        plain = filled_pairs(fill_pairs_py, a, b, radius, size, False, 2000)
+        assert compiled[0] == plain[0]
+        for mine, other in zip(compiled[1:], plain[1:], strict=True):
+            assert_array_equal(mine[: compiled[0]], other[: plain[0]])
+
+
+def test_cells_are_wider_than_the_radius_and_limited() -> None:
+    assert cells_per_side_py(100.0, 10.0, 50) == 10
+    assert cells_per_side_py(100.0, 11.0, 50) == 9
+    assert cells_per_side_py(100.0, 200.0, 50) == 1
+    assert cells_per_side_py(100.0, 0.5, 50) == 50
+
+
+def test_grid_kernel_reports_a_buffer_too_small() -> None:
+    points = np.array([[1.0, 1.0], [2.0, 1.0], [3.0, 1.0]])
+    size = (SIDE, SIDE)
+    assert filled_pairs(fill_pairs, points, points, 5.0, size, False, 8)[0] == BUFFER_TOO_SMALL
+    assert filled_pairs(fill_pairs, points, points, 5.0, size, False, 9)[0] == 9
+
+
+def test_find_pairs_grows_the_buffer_until_they_fit(config: GenomeConfig) -> None:
+    points: list[Point] = [(50.0 + 0.01 * i, 50.0) for i in range(100)]
+    view = view_of(make_creatures(config, points))
+    buffer = PairBuffer()
+    assert buffer.observer.size < 100 * 100
+    pairs = find_pairs(view, view.position, 10.0, buffer)
+    assert pairs.observer.size == 100 * 100
+    assert buffer.observer.size >= 100 * 100
+    assert buffer.target.size == buffer.distance.size == buffer.observer.size
+
+
+def test_two_bodies_in_one_place_are_a_pair_and_not_a_self_pair(config: GenomeConfig) -> None:
+    view = view_of(make_creatures(config, [(50.0, 50.0), (50.0, 50.0)]))
+    pairs = find_pairs(view, view.position, 10.0, PairBuffer(), skip_self=True)
+    assert_array_equal(pairs.observer, [0, 1])
+    assert_array_equal(pairs.target, [1, 0])
+    assert_array_equal(pairs.distance, [0.0, 0.0])
 
 
 def test_creature_pairs_are_sorted_by_observer_and_target(config: GenomeConfig) -> None:
-    """The density sum runs in uid order, whatever order the tree returns pairs in (§7.3)."""
+    """The density sum runs in uid order, whatever the order of the grid cells (§7.3)."""
     points: list[Point] = [(50.0 + 3.0 * i, 50.0 + (i % 3)) for i in range(10)]
     scene = scene_of(config, make_creatures(config, points), make_plants([]))
     pairs = scene.creature_pairs
@@ -293,7 +427,7 @@ def test_angle_wraps_across_the_back_of_the_heading(config: GenomeConfig) -> Non
 
 
 def test_limit_of_the_radius_is_strict(config: GenomeConfig) -> None:
-    """§5.2 requires d < r_vis(t); the tree alone would include d = r."""
+    """§5.2 requires d < r_vis(t); the pair query alone would include d = r."""
     state = make_creatures(config, [(50.0, 50.0)])
     assert_allclose(see(config, state, make_plants([(90.0, 50.0)])), 0.0)
 
@@ -458,7 +592,7 @@ def test_creature_pairs_exclude_self(config: GenomeConfig) -> None:
 
 def test_find_pairs_handles_an_empty_view(config: GenomeConfig) -> None:
     view = view_of(make_creatures(config, []))
-    pairs = find_pairs(view, view.tree, view.position, 10.0)
+    pairs = find_pairs(view, view.position, 10.0, PairBuffer())
     assert pairs.observer.size == 0
 
 

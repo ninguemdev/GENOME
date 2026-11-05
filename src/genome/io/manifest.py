@@ -19,6 +19,7 @@ from genome.core.config import GenomeConfig, config_hash, config_to_dict
 
 MANIFEST_FILE = "manifest.yaml"
 CONFIG_FILE = "config.yaml"
+BATCH_FILE = "batch.yaml"
 #: Packages whose versions §11.7 asks for, next to Python.
 PACKAGES = ("numpy", "scipy", "numba", "pettingzoo")
 GIT_TIMEOUT_SECONDS = 30
@@ -87,6 +88,20 @@ def write_manifest(output: Path, manifest: Manifest) -> None:
 def read_manifest(output: Path) -> Manifest:
     """Read the manifest of a run."""
     data: Manifest = yaml.safe_load((output / MANIFEST_FILE).read_text(encoding="utf-8"))
+    return data
+
+
+def write_batch_manifest(output: Path, manifest: Manifest) -> None:
+    """Replace the manifest of a battery in one step, as each world ends (ADR 0011)."""
+    _write_yaml(output / BATCH_FILE, manifest)
+
+
+def read_batch_manifest(output: Path) -> Manifest | None:
+    """Read the manifest of a battery, or ``None`` if ``output`` holds no battery."""
+    path = output / BATCH_FILE
+    if not path.exists():
+        return None
+    data: Manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data
 
 

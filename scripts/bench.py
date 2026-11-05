@@ -28,12 +28,15 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import get_args
 
 from genome.core.config import GenomeConfig, load_config
+from genome.core.config.sections import ProcessPriority
 from genome.core.tick import Simulation
 from genome.io.telemetry import TelemetryRecorder
 from genome.lab.controllers import FixedGenome
 from genome.lab.ecology import make_simulation
+from genome.lab.pool import SINGLE_THREAD_VARIABLES, set_process_priority
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 SEED = 1
@@ -56,12 +59,6 @@ SYSTEMS = (
     ("environment", "step_environment"),
 )
 #: One thread per process: each library would otherwise start its own pool in every world.
-SINGLE_THREAD_VARIABLES = (
-    "OMP_NUM_THREADS",
-    "OPENBLAS_NUM_THREADS",
-    "MKL_NUM_THREADS",
-    "NUMBA_NUM_THREADS",
-)
 BYTES_PER_MEBIBYTE = 2**20
 KIBIBYTES_PER_MEBIBYTE = 2**10
 
@@ -225,8 +222,10 @@ def scale_worker(
     ticks: int,
     barrier: multiprocessing.synchronize.Barrier,
     samples: "multiprocessing.queues.Queue[ScaleSample]",
+    priority: ProcessPriority = "normal",
 ) -> None:
     """Run one world, starting the clock together with the others."""
+    set_process_priority(priority)
     simulation = warm_world(sized_config(population))
     barrier.wait()
     faults_before, _ = memory_counters()
@@ -249,7 +248,9 @@ def scale_worker(
     )
 
 
-def measure_scale(population: int, ticks: int, processes: int) -> list[ScaleSample]:
+def measure_scale(
+    population: int, ticks: int, processes: int, priority: ProcessPriority = "normal"
+) -> list[ScaleSample]:
     """The samples of ``processes`` independent worlds running at the same time."""
     for variable in SINGLE_THREAD_VARIABLES:
         os.environ[variable] = "1"
@@ -257,7 +258,7 @@ def measure_scale(population: int, ticks: int, processes: int) -> list[ScaleSamp
     barrier = context.Barrier(processes)
     samples: multiprocessing.queues.Queue[ScaleSample] = context.Queue()
     workers = [
-        context.Process(target=scale_worker, args=(population, ticks, barrier, samples))
+        context.Process(target=scale_worker, args=(population, ticks, barrier, samples, priority))
         for _ in range(processes)
     ]
     for worker in workers:
@@ -268,13 +269,18 @@ def measure_scale(population: int, ticks: int, processes: int) -> list[ScaleSamp
     return measured
 
 
-def report_scale(population: int, ticks: int, counts: list[int]) -> None:
+def report_scale(
+    population: int, ticks: int, counts: list[int], priority: ProcessPriority = "normal"
+) -> None:
     """Print the throughput and where the processor went, for each number of processes."""
-    print(f"\npopulation {population}, {ticks} ticks, {os.cpu_count()} logical processors")
+    print(
+        f"\npopulation {population}, {ticks} ticks, {os.cpu_count()} logical processors, "
+        f"priority {priority}"
+    )
     print("procs  ms/tick  ticks/s  gain  cpu use  kernel  faults/tick  peak MiB")
     single = None
     for processes in counts:
-        samples = measure_scale(population, ticks, processes)
+        samples = measure_scale(population, ticks, processes, priority)
         throughput = sum(MILLISECONDS / sample.ms_per_tick for sample in samples)
         single = single if single is not None else throughput / processes
         busy = sum(sample.user + sample.kernel for sample in samples)
@@ -299,10 +305,11 @@ def main() -> None:
     parser.add_argument("--ticks", type=int, default=300)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--processes", type=int, nargs="+", default=None)
+    parser.add_argument("--priority", default="normal", choices=get_args(ProcessPriority))
     args = parser.parse_args()
     for population in args.population:
         if args.processes:
-            report_scale(population, args.ticks, args.processes)
+            report_scale(population, args.ticks, args.processes, args.priority)
         else:
             bench(population, args.ticks, args.repeats)
 

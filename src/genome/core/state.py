@@ -10,7 +10,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
-from scipy.spatial import cKDTree
 
 from genome.core.body import Bodies
 from genome.core.snapshot import SavedArrays, copy_arrays
@@ -24,6 +23,8 @@ BoolArray = npt.NDArray[np.bool_]
 NO_ID = -1
 #: Hop value of a plant that receives no irrigation (§4.2).
 UNIRRIGATED = -1
+#: Pairs a new buffer holds; it doubles when a query needs more (§12.5).
+INITIAL_PAIR_CAPACITY = 4096
 
 
 def active_slots(alive: npt.NDArray[np.generic], ids: npt.NDArray[np.generic]) -> IntArray:
@@ -102,6 +103,53 @@ class SlotPool:
         ]
 
 
+class PairBuffer:
+    """Memory that one kind of pair query reuses tick after tick (§12.5).
+
+    It holds no state of the world: it is out of the hash and of checkpoints, and what it
+    contains is valid only until the next query that writes to it.
+
+    Attributes:
+        observer, target: Rows of each pair.
+        dx, dy, distance: Vector from observer to target, and its length.
+        weight: Weight of the target of each pair, for the queries that have one.
+    """
+
+    def __init__(self) -> None:
+        """Create a buffer with the initial capacity."""
+        self._allocate(INITIAL_PAIR_CAPACITY)
+
+    def grow(self) -> None:
+        """Double the capacity, losing what the buffer held."""
+        self._allocate(2 * self.observer.size)
+
+    def _allocate(self, capacity: int) -> None:
+        self.observer: IntArray = np.empty(capacity, dtype=np.int64)
+        self.target: IntArray = np.empty(capacity, dtype=np.int64)
+        self.dx: FloatArray = np.empty(capacity, dtype=np.float64)
+        self.dy: FloatArray = np.empty(capacity, dtype=np.float64)
+        self.distance: FloatArray = np.empty(capacity, dtype=np.float64)
+        self.weight: FloatArray = np.empty(capacity, dtype=np.float64)
+
+
+class PairBuffers:
+    """One buffer per query of a tick, since their results are in use at the same time (§12.5).
+
+    Attributes:
+        plants: Creature-plant pairs of the senses.
+        creatures: Creature-creature pairs of the senses.
+        rivers: Creature-river pairs of vision.
+        eating: Creature-plant pairs of eating.
+    """
+
+    def __init__(self) -> None:
+        """Create the buffers."""
+        self.plants = PairBuffer()
+        self.creatures = PairBuffer()
+        self.rivers = PairBuffer()
+        self.eating = PairBuffer()
+
+
 class PlantState:
     """Plants: fixed position, biomass and irrigation hop (ARQUITETURA §4.1).
 
@@ -118,7 +166,7 @@ class PlantState:
         self.position: FloatArray = np.zeros((capacity, 2), dtype=np.float64)
         self.biomass: FloatArray = np.zeros(capacity, dtype=np.float64)
         self.hops: IntArray = np.full(capacity, UNIRRIGATED, dtype=np.int64)
-        self._live_tree: tuple[IntArray, cKDTree] | None = None
+        self._live_slots: IntArray | None = None
 
     def add(self, position: FloatArray, biomass: FloatArray, hops: IntArray) -> IntArray:
         """Insert plants in the given order, so identifiers follow it; return their slots."""
@@ -126,7 +174,7 @@ class PlantState:
         self.position[slots] = position
         self.biomass[slots] = biomass
         self.hops[slots] = hops
-        self._live_tree = None
+        self._live_slots = None
         return slots
 
     def remove(self, slots: IntArray) -> None:
@@ -134,17 +182,13 @@ class PlantState:
         self.pool.release(slots)
         self.biomass[slots] = 0.0
         self.hops[slots] = UNIRRIGATED
-        self._live_tree = None
+        self._live_slots = None
 
-    def live_tree(self, size: tuple[float, float]) -> tuple[IntArray, cKDTree]:
-        """Live slots in identifier order and their spatial tree, row by row (§12.5).
-
-        Plants never move, so the tree is rebuilt only when the set of plants changes.
-        """
-        if self._live_tree is None:
-            slots = self.pool.active()
-            self._live_tree = (slots, cKDTree(self.position[slots], boxsize=np.array(size)))
-        return self._live_tree
+    def live_slots(self) -> IntArray:
+        """Live slots in identifier order, read again only when the set changes (§12.5)."""
+        if self._live_slots is None:
+            self._live_slots = self.pool.active()
+        return self._live_slots
 
     def named_arrays(self) -> list[NamedArray]:
         """Arrays that define the plant state, for ``state_hash``."""
@@ -156,10 +200,10 @@ class PlantState:
         ]
 
     def load_arrays(self, saved: SavedArrays) -> None:
-        """Return to a saved state; the spatial tree is rebuilt when next asked for (§11.6)."""
+        """Return to a saved state; the live slots are read again when next asked for (§11.6)."""
         copy_arrays(self.named_arrays(), saved)
         self.pool.next_id = int(saved["plants.next_id"][0])
-        self._live_tree = None
+        self._live_slots = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +256,7 @@ class CreatureState:
     def __init__(self, capacity: int) -> None:
         """Create an empty creature table of ``capacity`` slots (``max_population``)."""
         self.pool = SlotPool(capacity)
+        self.pair_buffers = PairBuffers()
         self.founder_id: IntArray = np.full(capacity, NO_ID, dtype=np.int64)
         self.parent_uid: IntArray = np.full(capacity, NO_ID, dtype=np.int64)
         self.birth_tick: IntArray = np.zeros(capacity, dtype=np.int64)

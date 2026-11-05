@@ -8,7 +8,7 @@ import numpy.typing as npt
 from genome.core.config import GenomeConfig, SensorConfig
 from genome.core.kernels import jit
 from genome.core.sensors.pairs import CreatureView, Pairs, Scene, find_pairs
-from genome.core.space import TWO_PI, displacement
+from genome.core.space import TWO_PI, minimum_image_scalar
 from genome.core.world.rivers import Rivers
 from genome.core.world.water import Water
 
@@ -19,21 +19,139 @@ IntArray = npt.NDArray[np.int64]
 RECEPTORS = 6
 #: Visual channels: food, water, density and affinity (§5.5).
 CHANNELS = 4
+#: Scale of a target out of sight; a target in sight never has a negative one (§5.2).
+OUT_OF_SIGHT = -1.0
 
 
-def max_by_row_py(out: FloatArray, rows: IntArray, values: FloatArray) -> None:
-    """Raise each receptor of ``out[rows[i]]`` to ``values[i]``; independent of pair order."""
-    for i in range(rows.size):
-        for j in range(values.shape[1]):
-            if values[i, j] > out[rows[i], j]:
-                out[rows[i], j] = values[i, j]
+def color_similarity_py(a: float, b: float) -> float:
+    """sim(c₁, c₂) = 1 − 2·Δc, with Δc the circular distance between colours (§5.2)."""
+    delta = abs(a - b)
+    return 1.0 - 2.0 * min(delta, 1.0 - delta)
 
 
-def add_by_row_py(out: FloatArray, rows: IntArray, values: FloatArray) -> None:
-    """Add ``values[i]`` to each receptor of ``out[rows[i]]``, in the given order."""
-    for i in range(rows.size):
-        for j in range(values.shape[1]):
-            out[rows[i], j] += values[i, j]
+color_similarity = jit(color_similarity_py)
+
+
+def sight_py(
+    dx: float, dy: float, distance: float, heading: float, view_limits: FloatArray
+) -> tuple[float, float]:
+    """Angle θ of a target and its ``w(θ) · f(d)``, rejecting it early when out of sight (§5.2).
+
+    Args:
+        dx: First component of the vector from observer to target.
+        dy: Second component of that vector.
+        distance: Distance used by the falloff; the bank's distance for water.
+        heading: Orientation φ of the observer.
+        view_limits: ``(radius, fov, edge)``, the reach of the tick and the angles.
+
+    Returns:
+        ``(theta, scale)``; ``scale`` is ``OUT_OF_SIGHT`` for a target out of sight.
+    """
+    radius, fov, edge = view_limits[0], view_limits[1], view_limits[2]
+    if distance >= radius:
+        return 0.0, OUT_OF_SIGHT
+    if dx == 0.0 and dy == 0.0:
+        # A zero vector has no direction; it counts as straight ahead (ADR 0005).
+        theta = 0.0
+    else:
+        # Same wrap as space.wrap_angle, including its rounding fix.
+        wrapped = (np.arctan2(dy, dx) - heading + np.pi) % TWO_PI
+        theta = (0.0 if wrapped >= TWO_PI else wrapped) - np.pi
+    if abs(theta) > fov:
+        return 0.0, OUT_OF_SIGHT
+    return theta, min(1.0, (fov - abs(theta)) / edge) * (1.0 - distance / radius)
+
+
+sight = jit(sight_py)
+
+
+def raise_retina_py(
+    out: FloatArray,
+    observer: IntArray,
+    dx: FloatArray,
+    dy: FloatArray,
+    distance: FloatArray,
+    weights: FloatArray,
+    heading: FloatArray,
+    view_limits: FloatArray,
+    mu: FloatArray,
+    sigma: FloatArray,
+) -> None:
+    """Raise ``out`` to the best ``W · f(d) · g_j(θ)`` per receptor; free of pair order (§5.2)."""
+    for p in range(observer.size):
+        row = observer[p]
+        theta, scale = sight(dx[p], dy[p], distance[p], heading[row], view_limits)
+        if scale == OUT_OF_SIGHT:
+            continue
+        for j in range(mu.size):
+            offset = (theta - mu[j]) / sigma[j]
+            value = weights[p] * (scale * np.exp(-0.5 * offset * offset))
+            if value > out[row, j]:
+                out[row, j] = value
+
+
+def raise_disks_py(
+    out: FloatArray,
+    position: FloatArray,
+    centers: FloatArray,
+    radii: FloatArray,
+    fill: FloatArray,
+    heading: FloatArray,
+    view_limits: FloatArray,
+    mu: FloatArray,
+    sigma: FloatArray,
+    size: FloatArray,
+) -> None:
+    """Raise ``out`` by the lakes or puddles in sight, free of order (§5.2).
+
+    Each body is seen towards its centre at ``max(0, d − r)``, with weight ``fill``. Bodies
+    without water are skipped: most puddles are dry most of the time.
+    """
+    for row in range(position.shape[0]):
+        for body in range(centers.shape[0]):
+            if fill[body] <= 0.0:
+                continue
+            dx = minimum_image_scalar(centers[body, 0] - position[row, 0], size[0])
+            dy = minimum_image_scalar(centers[body, 1] - position[row, 1], size[1])
+            margin = max(0.0, np.hypot(dx, dy) - radii[body])
+            theta, scale = sight(dx, dy, margin, heading[row], view_limits)
+            if scale == OUT_OF_SIGHT:
+                continue
+            for j in range(mu.size):
+                offset = (theta - mu[j]) / sigma[j]
+                value = fill[body] * (scale * np.exp(-0.5 * offset * offset))
+                if value > out[row, j]:
+                    out[row, j] = value
+
+
+def creature_retina_py(
+    total: FloatArray,
+    affinity: FloatArray,
+    observer: IntArray,
+    target: IntArray,
+    dx: FloatArray,
+    dy: FloatArray,
+    distance: FloatArray,
+    color: FloatArray,
+    heading: FloatArray,
+    view_limits: FloatArray,
+    mu: FloatArray,
+    sigma: FloatArray,
+) -> None:
+    """Sum of the signals per receptor, in pair order, and the best affinity (§2.5, §5.2)."""
+    for p in range(observer.size):
+        row = observer[p]
+        theta, scale = sight(dx[p], dy[p], distance[p], heading[row], view_limits)
+        if scale == OUT_OF_SIGHT:
+            continue
+        similarity = color_similarity(color[row], color[target[p]])
+        for j in range(mu.size):
+            offset = (theta - mu[j]) / sigma[j]
+            signal = scale * np.exp(-0.5 * offset * offset)
+            total[row, j] += signal
+            value = similarity * signal
+            if value > affinity[row, j]:
+                affinity[row, j] = value
 
 
 def retina_signals_py(
@@ -61,23 +179,13 @@ def retina_signals_py(
     Returns:
         ``(kept, signals)``: index of each pair in sight, and its signal per receptor.
     """
-    radius, fov, edge = view_limits[0], view_limits[1], view_limits[2]
     kept = np.empty(observer.size, dtype=np.int64)
     signals = np.empty((observer.size, mu.size), dtype=np.float64)
     count = 0
     for p in range(observer.size):
-        if distance[p] >= radius:
+        theta, scale = sight(dx[p], dy[p], distance[p], heading[observer[p]], view_limits)
+        if scale == OUT_OF_SIGHT:
             continue
-        if dx[p] == 0.0 and dy[p] == 0.0:
-            # A zero vector has no direction; it counts as straight ahead (ADR 0005).
-            theta = 0.0
-        else:
-            # Same wrap as space.wrap_angle, including its rounding fix.
-            wrapped = (np.arctan2(dy[p], dx[p]) - heading[observer[p]] + np.pi) % TWO_PI
-            theta = (0.0 if wrapped >= TWO_PI else wrapped) - np.pi
-        if abs(theta) > fov:
-            continue
-        scale = min(1.0, (fov - abs(theta)) / edge) * (1.0 - distance[p] / radius)
         for j in range(mu.size):
             offset = (theta - mu[j]) / sigma[j]
             signals[count, j] = scale * np.exp(-0.5 * offset * offset)
@@ -86,8 +194,9 @@ def retina_signals_py(
     return kept[:count], signals[:count]
 
 
-max_by_row = jit(max_by_row_py)
-add_by_row = jit(add_by_row_py)
+raise_retina = jit(raise_retina_py)
+raise_disks = jit(raise_disks_py)
+creature_retina = jit(creature_retina_py)
 retina_signals = jit(retina_signals_py)
 
 
@@ -125,12 +234,6 @@ def make_retina(radius: float, sensors: SensorConfig) -> Retina:
     )
 
 
-def color_similarity(a: FloatArray, b: FloatArray) -> FloatArray:
-    """sim(c₁, c₂) = 1 − 2·Δc, with Δc the circular distance between colours (§5.2)."""
-    delta = np.abs(a - b)
-    return 1.0 - 2.0 * np.minimum(delta, 1.0 - delta)
-
-
 def vision_channels(scene: Scene, water: Water, config: GenomeConfig) -> FloatArray:
     """The 24 visual inputs: food, water, density and affinity (§5.2, §5.5).
 
@@ -148,94 +251,96 @@ def vision_channels(scene: Scene, water: Water, config: GenomeConfig) -> FloatAr
 
 def _plant_weights(scene: Scene, config: GenomeConfig) -> FloatArray:
     """Weight W_i / W_max of the plant of each pair, b / b_max (§5.2)."""
-    weights: FloatArray = scene.plant_biomass[scene.plant_pairs.target] / config.plants.b_max
+    targets = scene.plant_pairs.target
+    weights = scene.view.buffers.plants.weight[: targets.size]
+    # The targets are valid rows, and any mode but "raise" writes to ``out`` without a copy.
+    np.take(scene.plant_biomass, targets, out=weights, mode="clip")
+    weights /= config.plants.b_max
     return weights
 
 
-def _signals(view: CreatureView, pairs: Pairs, retina: Retina) -> tuple[IntArray, FloatArray]:
-    """Index of the pairs in sight and their ``f(d) · g_j(θ)`` (§5.2)."""
-    limits = np.array((retina.radius, retina.fov, retina.edge), dtype=np.float64)
-    kept, signals = retina_signals(
-        pairs.observer,
-        pairs.dx,
-        pairs.dy,
-        pairs.distance,
-        view.heading,
-        limits,
-        retina.mu,
-        retina.sigma,
-    )
-    return kept, signals
+def _view_limits(retina: Retina) -> FloatArray:
+    return np.array((retina.radius, retina.fov, retina.edge), dtype=np.float64)
 
 
 def _raise_channel(
     out: FloatArray, view: CreatureView, pairs: Pairs, weights: FloatArray, retina: Retina
 ) -> None:
     """Raise ``out`` to the best ``W · f(d) · g_j(θ)`` per receptor (§5.2)."""
-    kept, signals = _signals(view, pairs, retina)
-    max_by_row(out, pairs.observer[kept], weights[kept, None] * signals)
+    raise_retina(
+        out,
+        pairs.observer,
+        pairs.dx,
+        pairs.dy,
+        pairs.distance,
+        weights,
+        view.heading,
+        _view_limits(retina),
+        retina.mu,
+        retina.sigma,
+    )
 
 
 def _creature_channels(scene: Scene, retina: Retina) -> tuple[FloatArray, FloatArray]:
     """Saturated density and best affinity; the pairs already exclude self (§5.2)."""
     view, pairs = scene.view, scene.creature_pairs
-    kept, signals = _signals(view, pairs, retina)
-    rows = pairs.observer[kept]
     total = np.zeros((view.count, RECEPTORS))
-    add_by_row(total, rows, signals)
-    similarity = color_similarity(view.color[rows], view.color[pairs.target[kept]])
     affinity = np.zeros((view.count, RECEPTORS))
-    max_by_row(affinity, rows, similarity[:, None] * signals)
+    creature_retina(
+        total,
+        affinity,
+        pairs.observer,
+        pairs.target,
+        pairs.dx,
+        pairs.dy,
+        pairs.distance,
+        view.color,
+        view.heading,
+        _view_limits(retina),
+        retina.mu,
+        retina.sigma,
+    )
     return 1.0 - np.exp(-total), affinity
 
 
 def _water_channel(view: CreatureView, water: Water, retina: Retina) -> FloatArray:
     """Best source per receptor among river samples, lakes and puddles (§5.2)."""
     out = np.zeros((view.count, RECEPTORS))
-    sources = (
-        _river_pairs(view, water.rivers, retina),
-        _disk_pairs(view, water.lakes.centers, water.lakes.radius(), water.lakes.fill(), retina),
-        _disk_pairs(
-            view, water.puddles.sites, water.puddles.radius(), water.puddles.fill(), retina
-        ),
-    )
-    for pairs, weights in sources:
-        _raise_channel(out, view, pairs, weights, retina)
+    pairs, weights = _river_pairs(view, water.rivers, retina)
+    _raise_channel(out, view, pairs, weights, retina)
+    lakes, puddles = water.lakes, water.puddles
+    _raise_disks(out, view, lakes.centers, lakes.radius(), lakes.fill(), retina)
+    _raise_disks(out, view, puddles.sites, puddles.radius(), puddles.fill(), retina)
     return out
 
 
 def _river_pairs(view: CreatureView, rivers: Rivers, retina: Retina) -> tuple[Pairs, FloatArray]:
     """River samples seen at their distance to the bank, with weight one (§3.2, §5.2)."""
     half_width = rivers.width / 2.0
-    pairs = find_pairs(view, rivers.sample_tree, rivers.samples, retina.radius + half_width)
+    pairs = find_pairs(view, rivers.samples, retina.radius + half_width, view.buffers.rivers)
     margin = np.maximum(0.0, pairs.distance - half_width)
     banked = Pairs(pairs.observer, pairs.target, pairs.dx, pairs.dy, margin)
     return banked, np.ones(pairs.observer.size)
 
 
-def _disk_pairs(
+def _raise_disks(
+    out: FloatArray,
     view: CreatureView,
     centers: FloatArray,
     radii: FloatArray,
     fill: FloatArray,
     retina: Retina,
-) -> tuple[Pairs, FloatArray]:
-    """Lakes or puddles seen at ``max(0, d − r)``, towards their centre (§5.2).
-
-    Bodies without water are dropped first: most puddles are dry most of the time.
-    """
-    wet = np.flatnonzero(fill > 0.0)
-    width, height = view.size
-    vector = displacement(view.position[:, None, :], centers[wet][None, :, :], width, height)
-    margin = np.maximum(0.0, np.hypot(vector[..., 0], vector[..., 1]) - radii[wet])
-    rows, bodies = np.nonzero(margin < retina.radius)
-    observer = rows.astype(np.int64)
-    body = bodies.astype(np.int64)
-    pairs = Pairs(
-        observer,
-        wet[body],
-        vector[observer, body, 0],
-        vector[observer, body, 1],
-        margin[observer, body],
+) -> None:
+    """Raise ``out`` by the lakes or puddles in sight (§5.2)."""
+    raise_disks(
+        out,
+        view.position,
+        centers,
+        radii,
+        fill,
+        view.heading,
+        _view_limits(retina),
+        retina.mu,
+        retina.sigma,
+        np.array(view.size, dtype=np.float64),
     )
-    return pairs, fill[wet[body]]

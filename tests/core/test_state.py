@@ -51,29 +51,23 @@ def test_plants_add_and_remove() -> None:
     assert plants.pool.ids[0] == NO_ID
 
 
-def test_plant_tree_is_reused_until_the_set_of_plants_changes() -> None:
-    """§12.5: plants never move, so only births and deaths rebuild the tree."""
+def test_live_plant_slots_are_reused_until_the_set_of_plants_changes() -> None:
+    """§12.5: only births and deaths change which plants are alive."""
     plants = PlantState(4)
     plants.add(
         np.array([[1.0, 2.0], [3.0, 4.0]]), np.array([1.0, 3.0]), np.array([0, 2], dtype=np.int64)
     )
-    size = (10.0, 10.0)
-    slots, tree = plants.live_tree(size)
+    slots = plants.live_slots()
     np.testing.assert_array_equal(slots, [0, 1])
-    assert plants.live_tree(size)[1] is tree
+    assert plants.live_slots() is slots
     plants.biomass[0] = 2.0
-    assert plants.live_tree(size)[1] is tree
+    assert plants.live_slots() is slots
 
     plants.add(np.array([[5.0, 5.0]]), np.array([1.0]), np.array([0], dtype=np.int64))
-    grown_slots, grown = plants.live_tree(size)
-    assert grown is not tree
-    np.testing.assert_array_equal(grown_slots, [0, 1, 2])
+    np.testing.assert_array_equal(plants.live_slots(), [0, 1, 2])
 
     plants.remove(np.array([1], dtype=np.int64))
-    shrunk_slots, shrunk = plants.live_tree(size)
-    assert shrunk is not grown
-    np.testing.assert_array_equal(shrunk_slots, [0, 2])
-    np.testing.assert_array_equal(shrunk.data, plants.position[[0, 2]])
+    np.testing.assert_array_equal(plants.live_slots(), [0, 2])
 
 
 def test_state_hash_covers_plants_and_creatures() -> None:

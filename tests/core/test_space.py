@@ -154,3 +154,43 @@ def test_wrap_angle_lands_in_range(phi: float) -> None:
     assert -math.pi <= wrapped < math.pi
     assert_allclose(math.cos(wrapped), math.cos(phi), atol=1e-6)
     assert_allclose(math.sin(wrapped), math.sin(phi), atol=1e-6)
+
+
+def test_nearest_disk_margin_by_hand() -> None:
+    points = np.array([[1.0, 1.0], [99.0, 1.0], [50.0, 50.0]])
+    centers = np.array([[5.0, 1.0], [50.0, 50.0]])
+    radii = np.array([1.0, 2.0])
+    out = np.empty(3)
+    space.nearest_disk_margin_py(points, centers, radii, 100.0, 100.0, out)
+    # 4 − 1; across the seam 6 − 1; inside the second disk.
+    assert_array_equal(out, [3.0, 5.0, 0.0])
+
+
+def test_nearest_disk_margin_without_disks_is_infinite() -> None:
+    out = np.empty(2)
+    points = np.zeros((2, 2))
+    space.nearest_disk_margin_py(points, np.zeros((0, 2)), np.zeros(0), 10.0, 10.0, out)
+    assert_array_equal(out, [math.inf, math.inf])
+
+
+coordinates = st.floats(0.0, 99.999, allow_nan=False)
+point_lists = st.lists(st.tuples(coordinates, coordinates), min_size=1, max_size=8)
+
+
+@given(points=point_lists, centers=point_lists, radius=st.floats(0.0, 30.0))
+def test_nearest_disk_margin_is_bitwise_equal_to_the_array_form(
+    points: list[tuple[float, float]], centers: list[tuple[float, float]], radius: float
+) -> None:
+    p, c = np.array(points), np.array(centers)
+    radii = np.full(c.shape[0], radius)
+    out = np.empty(p.shape[0])
+    space.nearest_disk_margin(p, c, radii, 100.0, 100.0, out)
+    d = space.distance(p[:, None, :], c[None, :, :], 100.0, 100.0)
+    assert_array_equal(out, np.maximum(0.0, d - radii).min(axis=1, initial=np.inf))
+
+
+@given(delta=st.floats(-200.0, 200.0))
+def test_minimum_image_scalar_is_bitwise_equal_to_the_array_form(delta: float) -> None:
+    expected = space.minimum_image(delta, 100.0)
+    assert space.minimum_image_scalar_py(delta, 100.0) == expected
+    assert space.minimum_image_scalar(delta, 100.0) == expected

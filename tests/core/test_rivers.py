@@ -7,8 +7,13 @@ from hypothesis import strategies as st
 
 from genome.core.config import GenomeConfig
 from genome.core.rng import continuous_world_streams
-from genome.core.space import displacement
-from genome.core.world.rivers import Rivers, generate_rivers
+from genome.core.space import displacement, minimum_image_scalar_py
+from genome.core.world.rivers import (
+    NEAREST_VERTICES,
+    Rivers,
+    generate_rivers,
+    nearest_segments_py,
+)
 from tests.core.worlds import SIDE, straight_river
 
 
@@ -43,6 +48,72 @@ def test_crossing_rivers_use_the_nearest_of_both(config: GenomeConfig) -> None:
         worst = max(worst, float(distance.max()))
     # Every sample lies on a centre line, crossings included (ADR 0004).
     assert worst < 1e-9
+
+
+def _centerline_reference(rivers: Rivers, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The array form of ADR 0004 that the kernel replaced, for bitwise comparison."""
+    w, h = rivers.size
+    n, k = points.shape[0], NEAREST_VERTICES
+    _, nearest = rivers._vertex_tree.query(points, k=k)
+    starts = np.concatenate((rivers.prev_vertex[nearest], nearest), axis=1).ravel()
+    ends = np.concatenate((nearest, rivers.next_vertex[nearest]), axis=1).ravel()
+    a = rivers.vertices[starts]
+    seg = displacement(a, rivers.vertices[ends], w, h)
+    length = np.hypot(seg[:, 0], seg[:, 1])
+    unit = seg / length[:, None]
+    rel = displacement(a, np.repeat(points, 2 * k, axis=0), w, h)
+    along = np.clip(np.einsum("ij,ij->i", rel, unit), 0.0, length)
+    offset = rel - along[:, None] * unit
+    gap = np.hypot(offset[:, 0], offset[:, 1]).reshape(n, 2 * k)
+    best = np.argmin(gap, axis=1)
+    rows = np.arange(n)
+    return gap[rows, best], unit.reshape(n, 2 * k, 2)[rows, best]
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_kernel_is_bitwise_equal_to_the_array_form(config: GenomeConfig, seed: int) -> None:
+    streams = continuous_world_streams(seed)
+    rivers = generate_rivers(config.water, config.world, streams.world)
+    side = np.array(rivers.size)
+    points = np.vstack(
+        (
+            streams.world.uniform(0.0, 1.0, (4000, 2)) * side,
+            rivers.vertices,
+            rivers.samples,
+            np.array([[0.0, 0.0], [side[0] - 1e-12, side[1] - 1e-12]]),
+        )
+    )
+    distance, tangent = rivers.centerline(points)
+    expected_distance, expected_tangent = _centerline_reference(rivers, points)
+    np.testing.assert_array_equal(distance, expected_distance)
+    np.testing.assert_array_equal(tangent, expected_tangent)
+
+
+def test_plain_kernel_by_hand() -> None:
+    rivers = straight_river()
+    points = np.array([[10.0, 52.0], [99.5, 50.0]])
+    _, nearest = rivers._vertex_tree.query(points, k=NEAREST_VERTICES)
+    distance, tangent = np.empty(2), np.empty((2, 2))
+    nearest_segments_py(
+        points,
+        nearest,
+        rivers.vertices,
+        rivers.prev_vertex,
+        rivers.next_vertex,
+        SIDE,
+        SIDE,
+        distance,
+        tangent,
+    )
+    np.testing.assert_allclose(distance, [2.0, 0.0])
+    np.testing.assert_allclose(tangent, [[1.0, 0.0], [1.0, 0.0]])
+
+
+def test_minimum_image_scalar_by_hand() -> None:
+    assert minimum_image_scalar_py(90.0, 100.0) == -10.0
+    assert minimum_image_scalar_py(-90.0, 100.0) == 10.0
+    assert minimum_image_scalar_py(50.0, 100.0) == -50.0
+    assert minimum_image_scalar_py(-50.0, 100.0) == -50.0
 
 
 def test_no_rivers() -> None:

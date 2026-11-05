@@ -1131,6 +1131,8 @@ Cada execução grava `manifest.yaml` com: configuração completa e `config_has
 
 O manifesto nasce com o desfecho `interrupted`, que só o fim da execução substitui. Ele também registra o controlador e cada retomada, com tick, horário e commit (ADR 0009).
 
+Uma bateria de seeds grava `seed-NNNN/` por seed, cada uma com o próprio manifesto, e um `batch.yaml` na raiz, regravado a cada mundo que termina: `config_hash`, controlador, commit e indicação de alterações não commitadas; `workers`, teto e `cpu_fraction`; prioridade pedida e aplicada; horários de início e fim; e, por seed, estado (`pending`, `done`, `interrupted`, `failed`, `crashed`, `not_started`), desfecho, ticks, hash final e erro. Na retomada, a fonte é o manifesto de cada seed (ADR 0011).
+
 ### 11.8 Parâmetros
 
 | Parâmetro | Valor | Descrição |
@@ -1139,6 +1141,8 @@ O manifesto nasce com o desfecho `interrupted`, que só o fim da execução subs
 | `T_ckpt` | 50 000 | Intervalo de checkpoint no contínuo (ticks) |
 | `G_ckpt` | 10 | Intervalo de checkpoint no treino (gerações) |
 | `flush_rows` | 10 000 | Linhas por bloco gravado |
+| `cpu_fraction` | 0,8 | Fração dos processadores lógicos que define o teto de processos de uma bateria (ADR 0011) |
+| `process_priority` | `above_normal` | Prioridade pedida para os processos de uma bateria: `normal` ou `above_normal` (ADR 0011) |
 
 ## 12. Escala, calibração e desempenho
 
@@ -1201,7 +1205,7 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 - Distância à água em kernels Numba, sem arrays de todo ponto contra todo corpo (ADR 0011).
 - Redes compiladas e avaliadas em lote no Numba, sem `fastmath` (2.5).
 - Campos de olfato a cada `T_olf` ticks e irrigação a cada `T_irr`.
-- **Paralelismo por processos:** um processo por mundo, seed ou condição. Os 3 mundos de uma geração rodam em paralelo. No i5-13400, até 14 processos. A RTX 2060 não é usada pelo núcleo, que é CPU.
+- **Paralelismo por processos:** um processo por mundo, seed ou condição. Os 3 mundos de uma geração rodam em paralelo. O teto é `floor(cpu_fraction × processadores lógicos)`: 12 processos no i5-13400 (ADR 0011). A RTX 2060 não é usada pelo núcleo, que é CPU.
 
 ### 12.6 Estimativas de custo
 
@@ -1209,7 +1213,7 @@ Estimativas grosseiras, a confirmar com profiling na fase F2 do roadmap. A prime
 
 **Medição da F2** (`docs/relatorios/desempenho-f2.md`, i5-13400, um processo, controlador heurístico, sem redes): ~7,2 ms por tick com 200 fundadores, ~15,8 ms com 600 e ~30,9 ms com 1000 em 512 × 512. É de ~2 a ~8 vezes a tabela abaixo, conforme o cenário; ela segue como a estimativa original; o relatório refaz as contas de prazo, e otimizar ou aceitar esses prazos é uma decisão a tomar antes da F3.
 
-**Medição antes da F3** (ADR 0011, i5-13400, um processo, controlador heurístico, sem redes): ~5,9 ms por tick com 200 fundadores, ~13,7 ms com 600 e ~24,7 ms com 1000 em 512 × 512. Com 16 processos, o total chega a ~1494, ~656 e ~367 ticks/s, respectivamente.
+**Medição antes da F3** (ADR 0011, i5-13400, um processo, controlador heurístico, sem redes): ~5,9 ms por tick com 200 fundadores, ~13,7 ms com 600 e ~24,7 ms com 1000 em 512 × 512. Com 16 processos, o total chega a ~1494, ~656 e ~367 ticks/s, respectivamente; com os 12 do teto padrão, a ~1244, ~535 e ~299 ticks/s. Uma bateria real de 20 seeds do `f1_ecology`, com gravação e 12 processos, rendeu ~757 ticks/s, com ~74% de CPU e ~2,1 GB de RAM.
 
 | Cenário | Por tick | Total |
 | --- | --- | --- |

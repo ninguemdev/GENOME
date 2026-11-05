@@ -1196,8 +1196,9 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 ### 12.5 Estratégias de desempenho
 
 - Estado em arrays por atributo, com slots pré-alocados (2.1).
-- `cKDTree` com `boxsize`: a das criaturas é refeita a cada tick, a das plantas só quando o conjunto muda, e as de rios e lagos uma única vez.
-- Pares criatura–objeto gerados de uma vez (`sparse_distance_matrix(..., output_type="ndarray")`) e agregados em kernels Numba.
+- Pares criatura–objeto gerados de uma vez por um kernel Numba com grade uniforme toroidal, já ordenados por observador e alvo, em buffers reaproveitados entre os ticks, e agregados em kernels Numba (ADR 0011).
+- `cKDTree` com `boxsize` só onde não é caminho quente por par: vértices e amostras dos rios, construídas uma única vez, e plantas, na irrigação e no espaçamento.
+- Distância à água em kernels Numba, sem arrays de todo ponto contra todo corpo (ADR 0011).
 - Redes compiladas e avaliadas em lote no Numba, sem `fastmath` (2.5).
 - Campos de olfato a cada `T_olf` ticks e irrigação a cada `T_irr`.
 - **Paralelismo por processos:** um processo por mundo, seed ou condição. Os 3 mundos de uma geração rodam em paralelo. No i5-13400, até 14 processos. A RTX 2060 não é usada pelo núcleo, que é CPU.
@@ -1207,6 +1208,8 @@ N\_pp é o número de plantas irrigadas **não saturadas** (as saturadas e cerca
 Estimativas grosseiras, a confirmar com profiling na fase F2 do roadmap. A primeira medição, na F1 (`scripts/bench.py`, com controlador heurístico e sem o custo de avaliar redes), deu ~6,4 ms por tick com 200 criaturas e ~17 ms com 600, de 2 a 4 vezes acima da primeira linha da tabela. Os sensores somam de 60% a 80% do tick.
 
 **Medição da F2** (`docs/relatorios/desempenho-f2.md`, i5-13400, um processo, controlador heurístico, sem redes): ~7,2 ms por tick com 200 fundadores, ~15,8 ms com 600 e ~30,9 ms com 1000 em 512 × 512. É de ~2 a ~8 vezes a tabela abaixo, conforme o cenário; ela segue como a estimativa original; o relatório refaz as contas de prazo, e otimizar ou aceitar esses prazos é uma decisão a tomar antes da F3.
+
+**Medição antes da F3** (ADR 0011, i5-13400, um processo, controlador heurístico, sem redes): ~5,9 ms por tick com 200 fundadores, ~13,7 ms com 600 e ~24,7 ms com 1000 em 512 × 512. Com 16 processos, o total chega a ~1494, ~656 e ~367 ticks/s, respectivamente.
 
 | Cenário | Por tick | Total |
 | --- | --- | --- |

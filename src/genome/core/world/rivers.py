@@ -13,7 +13,8 @@ import numpy.typing as npt
 from scipy.spatial import cKDTree
 
 from genome.core.config import WaterConfig, WorldConfig
-from genome.core.space import displacement, wrap_positions
+from genome.core.kernels import jit
+from genome.core.space import displacement, minimum_image_scalar, wrap_positions
 
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
@@ -23,6 +24,53 @@ HORIZONTAL = 0
 # Vertices whose adjacent segments are tested per query point. More than one,
 # so that near a crossing the vertices of both rivers are considered (ADR 0004).
 NEAREST_VERTICES = 4
+
+
+def nearest_segments_py(
+    points: FloatArray,
+    nearest: IntArray,
+    vertices: FloatArray,
+    prev_vertex: IntArray,
+    next_vertex: IntArray,
+    width: float,
+    height: float,
+    out_distance: FloatArray,
+    out_tangent: FloatArray,
+) -> None:
+    """Distance to the nearest of the candidate segments, and its flow tangent (§3.2, ADR 0004).
+
+    Each vertex in ``nearest`` proposes the segment that ends in it and the one that starts
+    in it. All incoming segments are tested first, in the order of ``nearest``, then all
+    outgoing ones; the first minimum along that order wins, so ties are deterministic.
+    """
+    k = nearest.shape[1]
+    for i in range(points.shape[0]):
+        best = np.inf
+        best_x, best_y = 0.0, 0.0
+        for candidate in range(2 * k):
+            if candidate < k:
+                end = nearest[i, candidate]
+                start = prev_vertex[end]
+            else:
+                start = nearest[i, candidate - k]
+                end = next_vertex[start]
+            ax, ay = vertices[start, 0], vertices[start, 1]
+            seg_x = minimum_image_scalar(vertices[end, 0] - ax, width)
+            seg_y = minimum_image_scalar(vertices[end, 1] - ay, height)
+            length = np.hypot(seg_x, seg_y)
+            unit_x, unit_y = seg_x / length, seg_y / length
+            rel_x = minimum_image_scalar(points[i, 0] - ax, width)
+            rel_y = minimum_image_scalar(points[i, 1] - ay, height)
+            along = min(max(rel_x * unit_x + rel_y * unit_y, 0.0), length)
+            gap = np.hypot(rel_x - along * unit_x, rel_y - along * unit_y)
+            if gap < best:
+                best, best_x, best_y = gap, unit_x, unit_y
+        out_distance[i] = best
+        out_tangent[i, 0] = best_x
+        out_tangent[i, 1] = best_y
+
+
+nearest_segments = jit(nearest_segments_py)
 
 
 @dataclass(frozen=True, eq=False)
@@ -73,15 +121,19 @@ class Rivers:
         k = min(NEAREST_VERTICES, self.count_vertices)
         _, nearest = self._vertex_tree.query(points, k=k)
         nearest = np.asarray(nearest, dtype=np.int64).reshape(n, k)
-        starts = np.concatenate((self.prev_vertex[nearest], nearest), axis=1)
-        ends = np.concatenate((nearest, self.next_vertex[nearest]), axis=1)
-        repeated = np.repeat(points, 2 * k, axis=0)
-        d, t = self._segment_distance(repeated, starts.ravel(), ends.ravel())
-        d, t = d.reshape(n, 2 * k), t.reshape(n, 2 * k, 2)
-        # First minimum along the fixed candidate order: deterministic ties.
-        best = np.argmin(d, axis=1)
-        rows = np.arange(n)
-        return d[rows, best], t[rows, best]
+        distance, tangent = np.empty(n, dtype=np.float64), np.empty((n, 2), dtype=np.float64)
+        nearest_segments(
+            points,
+            nearest,
+            self.vertices,
+            self.prev_vertex,
+            self.next_vertex,
+            self.size[0],
+            self.size[1],
+            distance,
+            tangent,
+        )
+        return distance, tangent
 
     def current(self, points: FloatArray) -> FloatArray:
         """Current v_corr = v_corr_max · (1 − (2 d_c / w_rio)²) · t̂ inside rivers (§3.2)."""
@@ -101,19 +153,6 @@ class Rivers:
         """Whether each point lies inside a river (§3.2, §4.4)."""
         distance, _ = self.centerline(points)
         return distance < self.width / 2.0
-
-    def _segment_distance(
-        self, points: FloatArray, start: IntArray, end: IntArray
-    ) -> tuple[FloatArray, FloatArray]:
-        w, h = self.size
-        a = self.vertices[start]
-        seg = displacement(a, self.vertices[end], w, h)
-        length = np.hypot(seg[:, 0], seg[:, 1])
-        unit = seg / length[:, None]
-        rel = displacement(a, points, w, h)
-        along = np.clip(np.einsum("ij,ij->i", rel, unit), 0.0, length)
-        offset = rel - along[:, None] * unit
-        return np.hypot(offset[:, 0], offset[:, 1]), unit
 
 
 def generate_rivers(water: WaterConfig, world: WorldConfig, rng: np.random.Generator) -> Rivers:

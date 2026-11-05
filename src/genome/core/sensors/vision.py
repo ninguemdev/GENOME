@@ -8,7 +8,7 @@ import numpy.typing as npt
 from genome.core.config import GenomeConfig, SensorConfig
 from genome.core.kernels import jit
 from genome.core.sensors.pairs import CreatureView, Pairs, Scene, find_pairs
-from genome.core.space import TWO_PI, displacement
+from genome.core.space import TWO_PI, minimum_image_scalar
 from genome.core.world.rivers import Rivers
 from genome.core.world.water import Water
 
@@ -90,6 +90,40 @@ def raise_retina_py(
                 out[row, j] = value
 
 
+def raise_disks_py(
+    out: FloatArray,
+    position: FloatArray,
+    centers: FloatArray,
+    radii: FloatArray,
+    fill: FloatArray,
+    heading: FloatArray,
+    view_limits: FloatArray,
+    mu: FloatArray,
+    sigma: FloatArray,
+    size: FloatArray,
+) -> None:
+    """Raise ``out`` by the lakes or puddles in sight, free of order (§5.2).
+
+    Each body is seen towards its centre at ``max(0, d − r)``, with weight ``fill``. Bodies
+    without water are skipped: most puddles are dry most of the time.
+    """
+    for row in range(position.shape[0]):
+        for body in range(centers.shape[0]):
+            if fill[body] <= 0.0:
+                continue
+            dx = minimum_image_scalar(centers[body, 0] - position[row, 0], size[0])
+            dy = minimum_image_scalar(centers[body, 1] - position[row, 1], size[1])
+            margin = max(0.0, np.hypot(dx, dy) - radii[body])
+            theta, scale = sight(dx, dy, margin, heading[row], view_limits)
+            if scale == OUT_OF_SIGHT:
+                continue
+            for j in range(mu.size):
+                offset = (theta - mu[j]) / sigma[j]
+                value = fill[body] * (scale * np.exp(-0.5 * offset * offset))
+                if value > out[row, j]:
+                    out[row, j] = value
+
+
 def creature_retina_py(
     total: FloatArray,
     affinity: FloatArray,
@@ -161,6 +195,7 @@ def retina_signals_py(
 
 
 raise_retina = jit(raise_retina_py)
+raise_disks = jit(raise_disks_py)
 creature_retina = jit(creature_retina_py)
 retina_signals = jit(retina_signals_py)
 
@@ -216,7 +251,11 @@ def vision_channels(scene: Scene, water: Water, config: GenomeConfig) -> FloatAr
 
 def _plant_weights(scene: Scene, config: GenomeConfig) -> FloatArray:
     """Weight W_i / W_max of the plant of each pair, b / b_max (§5.2)."""
-    weights: FloatArray = scene.plant_biomass[scene.plant_pairs.target] / config.plants.b_max
+    targets = scene.plant_pairs.target
+    weights = scene.view.buffers.plants.weight[: targets.size]
+    # The targets are valid rows, and any mode but "raise" writes to ``out`` without a copy.
+    np.take(scene.plant_biomass, targets, out=weights, mode="clip")
+    weights /= config.plants.b_max
     return weights
 
 
@@ -267,15 +306,11 @@ def _creature_channels(scene: Scene, retina: Retina) -> tuple[FloatArray, FloatA
 def _water_channel(view: CreatureView, water: Water, retina: Retina) -> FloatArray:
     """Best source per receptor among river samples, lakes and puddles (§5.2)."""
     out = np.zeros((view.count, RECEPTORS))
-    sources = (
-        _river_pairs(view, water.rivers, retina),
-        _disk_pairs(view, water.lakes.centers, water.lakes.radius(), water.lakes.fill(), retina),
-        _disk_pairs(
-            view, water.puddles.sites, water.puddles.radius(), water.puddles.fill(), retina
-        ),
-    )
-    for pairs, weights in sources:
-        _raise_channel(out, view, pairs, weights, retina)
+    pairs, weights = _river_pairs(view, water.rivers, retina)
+    _raise_channel(out, view, pairs, weights, retina)
+    lakes, puddles = water.lakes, water.puddles
+    _raise_disks(out, view, lakes.centers, lakes.radius(), lakes.fill(), retina)
+    _raise_disks(out, view, puddles.sites, puddles.radius(), puddles.fill(), retina)
     return out
 
 
@@ -288,29 +323,24 @@ def _river_pairs(view: CreatureView, rivers: Rivers, retina: Retina) -> tuple[Pa
     return banked, np.ones(pairs.observer.size)
 
 
-def _disk_pairs(
+def _raise_disks(
+    out: FloatArray,
     view: CreatureView,
     centers: FloatArray,
     radii: FloatArray,
     fill: FloatArray,
     retina: Retina,
-) -> tuple[Pairs, FloatArray]:
-    """Lakes or puddles seen at ``max(0, d − r)``, towards their centre (§5.2).
-
-    Bodies without water are dropped first: most puddles are dry most of the time.
-    """
-    wet = np.flatnonzero(fill > 0.0)
-    width, height = view.size
-    vector = displacement(view.position[:, None, :], centers[wet][None, :, :], width, height)
-    margin = np.maximum(0.0, np.hypot(vector[..., 0], vector[..., 1]) - radii[wet])
-    rows, bodies = np.nonzero(margin < retina.radius)
-    observer = rows.astype(np.int64)
-    body = bodies.astype(np.int64)
-    pairs = Pairs(
-        observer,
-        wet[body],
-        vector[observer, body, 0],
-        vector[observer, body, 1],
-        margin[observer, body],
+) -> None:
+    """Raise ``out`` by the lakes or puddles in sight (§5.2)."""
+    raise_disks(
+        out,
+        view.position,
+        centers,
+        radii,
+        fill,
+        view.heading,
+        _view_limits(retina),
+        retina.mu,
+        retina.sigma,
+        np.array(view.size, dtype=np.float64),
     )
-    return pairs, fill[wet[body]]

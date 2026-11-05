@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 
 from genome.core.config import WaterConfig
-from genome.core.space import distance
+from genome.core.space import distance, nearest_disk_margin
 from genome.core.state_hash import NamedArray
 
 FloatArray = npt.NDArray[np.float64]
@@ -71,8 +71,9 @@ class Lakes:
         """Distance to the nearest lake bank, ``max(0, d − r(t))``; infinite without water."""
         wet = np.flatnonzero(self.volume > 0.0)
         w, h = self._size
-        d = distance(points[:, None, :], self.centers[wet][None, :, :], w, h)
-        return np.maximum(0.0, d - self.radius()[wet]).min(axis=1, initial=np.inf)
+        out = np.empty(points.shape[0], dtype=np.float64)
+        nearest_disk_margin(points, self.centers[wet], self.radius()[wet], w, h, out)
+        return out
 
     def within_max(self, points: FloatArray) -> BoolArray:
         """Whether each point lies inside the maximum area r_max of a lake (§4.4)."""

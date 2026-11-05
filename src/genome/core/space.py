@@ -9,6 +9,8 @@ import math
 import numpy as np
 import numpy.typing as npt
 
+from genome.core.kernels import jit
+
 FloatArray = npt.NDArray[np.float64]
 
 TWO_PI = 2.0 * math.pi
@@ -60,6 +62,42 @@ def distance(a: npt.ArrayLike, b: npt.ArrayLike, width: float, height: float) ->
     """Toroidal Euclidean distance between ``a`` and ``b``, shape ``(...)`` (§3.1)."""
     d = displacement(a, b, width, height)
     return np.hypot(d[..., 0], d[..., 1])
+
+
+def minimum_image_scalar_py(delta: float, size: float) -> float:
+    """Minimum-image offset of one number (§3.1), bit-identical to ``minimum_image``."""
+    half = size / 2.0
+    wrapped = (delta + half) % size
+    return (0.0 if wrapped >= size else wrapped) - half
+
+
+minimum_image_scalar = jit(minimum_image_scalar_py)
+
+
+def nearest_disk_margin_py(
+    points: FloatArray,
+    centers: FloatArray,
+    radii: FloatArray,
+    width: float,
+    height: float,
+    out: FloatArray,
+) -> None:
+    """Distance from each point to the nearest disk, zero inside one, infinite without disks.
+
+    Implements ``min_j max(0, d(p, c_j) − r_j)`` with the toroidal distance of §3.1.
+    """
+    for i in range(points.shape[0]):
+        best = np.inf
+        for j in range(centers.shape[0]):
+            dx = minimum_image_scalar(centers[j, 0] - points[i, 0], width)
+            dy = minimum_image_scalar(centers[j, 1] - points[i, 1], height)
+            margin = max(0.0, np.hypot(dx, dy) - radii[j])
+            if margin < best:
+                best = margin
+        out[i] = best
+
+
+nearest_disk_margin = jit(nearest_disk_margin_py)
 
 
 def wrap_angle(angles: npt.ArrayLike) -> FloatArray:

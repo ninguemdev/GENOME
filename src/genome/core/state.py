@@ -112,6 +112,7 @@ class PairBuffer:
     Attributes:
         observer, target: Rows of each pair.
         dx, dy, distance: Vector from observer to target, and its length.
+        weight: Weight of the target of each pair, for the queries that have one.
     """
 
     def __init__(self) -> None:
@@ -128,6 +129,7 @@ class PairBuffer:
         self.dx: FloatArray = np.empty(capacity, dtype=np.float64)
         self.dy: FloatArray = np.empty(capacity, dtype=np.float64)
         self.distance: FloatArray = np.empty(capacity, dtype=np.float64)
+        self.weight: FloatArray = np.empty(capacity, dtype=np.float64)
 
 
 class PairBuffers:

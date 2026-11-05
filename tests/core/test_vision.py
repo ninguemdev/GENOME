@@ -2,6 +2,7 @@ import math
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -26,6 +27,8 @@ from genome.core.sensors.vision import (
     creature_retina,
     creature_retina_py,
     make_retina,
+    raise_disks,
+    raise_disks_py,
     raise_retina,
     raise_retina_py,
     retina_signals,
@@ -39,6 +42,8 @@ from genome.core.state import CreatureState, PairBuffer, PlantState
 from tests.conftest import CONFIGS
 from tests.core.scenes import Point, make_creatures, make_plants, scene_of, view_of
 from tests.core.worlds import SIDE, dry_world, pond_world, river_world
+
+FloatArray = npt.NDArray[np.float64]
 
 FOOD, DRINK, DENSITY, AFFINITY = 0, 6, 12, 18
 # Receptors 3 and 4 have centres at ∓10° and width 8°: e^(−100/128) straight ahead.
@@ -635,3 +640,54 @@ def test_channels_stay_in_range(config: GenomeConfig, light: float) -> None:
     channels = see(config, state, make_plants(rng_positions[:20]), light)
     assert channels.min() >= 0.0
     assert channels.max() <= 1.0
+
+
+def _raise_disks_from_arrays(
+    position: FloatArray,
+    centers: FloatArray,
+    radii: FloatArray,
+    fill: FloatArray,
+    heading: FloatArray,
+    limits: FloatArray,
+    mu: FloatArray,
+    sigma: FloatArray,
+) -> FloatArray:
+    """The array form that ``raise_disks`` replaced, for bitwise comparison."""
+    wet = np.flatnonzero(fill > 0.0)
+    vector = displacement(position[:, None, :], centers[wet][None, :, :], SIDE, SIDE)
+    margin = np.maximum(0.0, np.hypot(vector[..., 0], vector[..., 1]) - radii[wet])
+    rows, bodies = np.nonzero(margin < limits[0])
+    out = np.zeros((position.shape[0], mu.size))
+    raise_retina_py(
+        out,
+        rows.astype(np.int64),
+        vector[rows, bodies, 0],
+        vector[rows, bodies, 1],
+        margin[rows, bodies],
+        fill[wet[bodies]],
+        heading,
+        limits,
+        mu,
+        sigma,
+    )
+    return out
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_raise_disks_is_bitwise_equal_to_the_array_form(seed: int, config: GenomeConfig) -> None:
+    rng = np.random.default_rng(seed)
+    position = rng.uniform(0.0, SIDE, (200, 2))
+    centers = rng.uniform(0.0, SIDE, (12, 2))
+    radii = rng.uniform(0.0, 8.0, 12)
+    fill = rng.uniform(0.0, 1.0, 12) * rng.integers(0, 2, 12)
+    heading = rng.uniform(-math.pi, math.pi, 200)
+    retina = make_retina(config.sensors.r_vis, config.sensors)
+    limits = np.array((retina.radius, retina.fov, retina.edge))
+    size = np.array((SIDE, SIDE))
+    fast, plain = np.zeros((200, RECEPTORS)), np.zeros((200, RECEPTORS))
+    arguments = (position, centers, radii, fill, heading, limits, retina.mu, retina.sigma, size)
+    raise_disks(fast, *arguments)
+    raise_disks_py(plain, *arguments)
+    expected = _raise_disks_from_arrays(*arguments[:-1])
+    assert_array_equal(fast, expected)
+    assert_array_equal(plain, expected)

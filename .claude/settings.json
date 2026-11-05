@@ -18,7 +18,6 @@
     "deny": [
       "Bash(git push --force *)",
       "Bash(git push -f *)",
-      "Bash(gh pr merge *)",
       "Bash(gh repo delete *)",
       "Bash(git config --global *)",
       "Bash(git config user.*)"

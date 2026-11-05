@@ -8,15 +8,23 @@ The total is the median of runs without the profiler; the systems come from one 
 under it, which slows them down evenly, so read them as shares of the total. A few ticks
 run first, outside the clock, so that compiling or loading the Numba kernels does not count.
 
+With ``--processes``, it measures instead how the throughput scales with independent worlds,
+one process each, all starting their clock together after loading the kernels.
+
 Usage: ``uv run python scripts/bench.py --population 200 600 1000 --ticks 1000``
+Scaling: ``uv run python scripts/bench.py --population 600 --processes 1 4 8 12 16``
 """
 
 import argparse
 import cProfile
 import dataclasses
+import multiprocessing
+import multiprocessing.queues
+import multiprocessing.synchronize
 import os
 import pstats
 import statistics
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -47,6 +55,74 @@ SYSTEMS = (
     ("metabolism", "apply_metabolism"),
     ("environment", "step_environment"),
 )
+#: One thread per process: each library would otherwise start its own pool in every world.
+SINGLE_THREAD_VARIABLES = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMBA_NUM_THREADS",
+)
+BYTES_PER_MEBIBYTE = 2**20
+KIBIBYTES_PER_MEBIBYTE = 2**10
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ScaleSample:
+    """What one world measured while the others ran.
+
+    Attributes:
+        ms_per_tick: Milliseconds per tick of this world.
+        user, kernel: Processor seconds in the program and in the operating system.
+        wall: Seconds on the clock.
+        page_faults: Page faults per tick.
+        peak_mebibytes: Peak memory of the process.
+    """
+
+    ms_per_tick: float
+    user: float
+    kernel: float
+    wall: float
+    page_faults: float
+    peak_mebibytes: float
+
+
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    class _MemoryCounters(ctypes.Structure):
+        """``PROCESS_MEMORY_COUNTERS`` of the Windows API."""
+
+        _fields_ = (
+            ("cb", wintypes.DWORD),
+            ("page_fault_count", wintypes.DWORD),
+            ("peak_working_set_size", ctypes.c_size_t),
+            ("working_set_size", ctypes.c_size_t),
+            ("quota_peak_paged_pool_usage", ctypes.c_size_t),
+            ("quota_paged_pool_usage", ctypes.c_size_t),
+            ("quota_peak_non_paged_pool_usage", ctypes.c_size_t),
+            ("quota_non_paged_pool_usage", ctypes.c_size_t),
+            ("pagefile_usage", ctypes.c_size_t),
+            ("peak_pagefile_usage", ctypes.c_size_t),
+        )
+
+    def memory_counters() -> tuple[int, float]:
+        """Page faults so far and peak memory of this process, in mebibytes."""
+        counters = _MemoryCounters()
+        counters.cb = ctypes.sizeof(counters)
+        current_process = ctypes.c_void_p(-1)
+        ctypes.windll.psapi.GetProcessMemoryInfo(
+            current_process, ctypes.byref(counters), counters.cb
+        )
+        return counters.page_fault_count, counters.peak_working_set_size / BYTES_PER_MEBIBYTE
+
+else:
+    import resource
+
+    def memory_counters() -> tuple[int, float]:
+        """Page faults so far and peak memory of this process, in mebibytes."""
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        return usage.ru_minflt + usage.ru_majflt, usage.ru_maxrss / KIBIBYTES_PER_MEBIBYTE
 
 
 def sized_config(population: int) -> GenomeConfig:
@@ -144,15 +220,91 @@ def bench(population: int, ticks: int, repeats: int) -> None:
     print(f"  one frame of the viewer  {frame_cost(config):.2f} ms")
 
 
+def scale_worker(
+    population: int,
+    ticks: int,
+    barrier: multiprocessing.synchronize.Barrier,
+    samples: "multiprocessing.queues.Queue[ScaleSample]",
+) -> None:
+    """Run one world, starting the clock together with the others."""
+    simulation = warm_world(sized_config(population))
+    barrier.wait()
+    faults_before, _ = memory_counters()
+    times_before = os.times()
+    start = time.perf_counter()
+    for _ in range(ticks):
+        simulation.step_batch()
+    wall = time.perf_counter() - start
+    times_after = os.times()
+    faults_after, peak = memory_counters()
+    samples.put(
+        ScaleSample(
+            ms_per_tick=MILLISECONDS * wall / ticks,
+            user=times_after.user - times_before.user,
+            kernel=times_after.system - times_before.system,
+            wall=wall,
+            page_faults=(faults_after - faults_before) / ticks,
+            peak_mebibytes=peak,
+        )
+    )
+
+
+def measure_scale(population: int, ticks: int, processes: int) -> list[ScaleSample]:
+    """The samples of ``processes`` independent worlds running at the same time."""
+    for variable in SINGLE_THREAD_VARIABLES:
+        os.environ[variable] = "1"
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(processes)
+    samples: multiprocessing.queues.Queue[ScaleSample] = context.Queue()
+    workers = [
+        context.Process(target=scale_worker, args=(population, ticks, barrier, samples))
+        for _ in range(processes)
+    ]
+    for worker in workers:
+        worker.start()
+    measured = [samples.get() for _ in workers]
+    for worker in workers:
+        worker.join()
+    return measured
+
+
+def report_scale(population: int, ticks: int, counts: list[int]) -> None:
+    """Print the throughput and where the processor went, for each number of processes."""
+    print(f"\npopulation {population}, {ticks} ticks, {os.cpu_count()} logical processors")
+    print("procs  ms/tick  ticks/s  gain  cpu use  kernel  faults/tick  peak MiB")
+    single = None
+    for processes in counts:
+        samples = measure_scale(population, ticks, processes)
+        throughput = sum(MILLISECONDS / sample.ms_per_tick for sample in samples)
+        single = single if single is not None else throughput / processes
+        busy = sum(sample.user + sample.kernel for sample in samples)
+        wall = max(sample.wall for sample in samples)
+        print(
+            f"{processes:5d}"
+            f"  {statistics.median(sample.ms_per_tick for sample in samples):7.2f}"
+            f"  {throughput:7.0f}"
+            f"  {throughput / single:4.1f}"
+            f"  {busy / (wall * (os.cpu_count() or 1)):7.0%}"
+            f"  {sum(sample.kernel for sample in samples) / busy:6.0%}"
+            f"  {statistics.median(sample.page_faults for sample in samples):11.0f}"
+            f"  {max(sample.peak_mebibytes for sample in samples):8.0f}",
+            flush=True,
+        )
+
+
 def main() -> None:
     """Run the benchmark for each population."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--population", type=int, nargs="+", default=[200, 600, 1000])
     parser.add_argument("--ticks", type=int, default=300)
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--processes", type=int, nargs="+", default=None)
     args = parser.parse_args()
     for population in args.population:
-        bench(population, args.ticks, args.repeats)
+        if args.processes:
+            report_scale(population, args.ticks, args.processes)
+        else:
+            bench(population, args.ticks, args.repeats)
 
 
 if __name__ == "__main__":

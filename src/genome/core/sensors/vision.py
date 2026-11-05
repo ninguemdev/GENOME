@@ -19,21 +19,97 @@ IntArray = npt.NDArray[np.int64]
 RECEPTORS = 6
 #: Visual channels: food, water, density and affinity (§5.5).
 CHANNELS = 4
+#: Scale of a target out of sight; a target in sight never has a negative one (§5.2).
+OUT_OF_SIGHT = -1.0
 
 
-def max_by_row_py(out: FloatArray, rows: IntArray, values: FloatArray) -> None:
-    """Raise each receptor of ``out[rows[i]]`` to ``values[i]``; independent of pair order."""
-    for i in range(rows.size):
-        for j in range(values.shape[1]):
-            if values[i, j] > out[rows[i], j]:
-                out[rows[i], j] = values[i, j]
+def sight_py(
+    dx: float, dy: float, distance: float, heading: float, view_limits: FloatArray
+) -> tuple[float, float]:
+    """Angle θ of a target and its ``w(θ) · f(d)``, rejecting it early when out of sight (§5.2).
+
+    Args:
+        dx: First component of the vector from observer to target.
+        dy: Second component of that vector.
+        distance: Distance used by the falloff; the bank's distance for water.
+        heading: Orientation φ of the observer.
+        view_limits: ``(radius, fov, edge)``, the reach of the tick and the angles.
+
+    Returns:
+        ``(theta, scale)``; ``scale`` is ``OUT_OF_SIGHT`` for a target out of sight.
+    """
+    radius, fov, edge = view_limits[0], view_limits[1], view_limits[2]
+    if distance >= radius:
+        return 0.0, OUT_OF_SIGHT
+    if dx == 0.0 and dy == 0.0:
+        # A zero vector has no direction; it counts as straight ahead (ADR 0005).
+        theta = 0.0
+    else:
+        # Same wrap as space.wrap_angle, including its rounding fix.
+        wrapped = (np.arctan2(dy, dx) - heading + np.pi) % TWO_PI
+        theta = (0.0 if wrapped >= TWO_PI else wrapped) - np.pi
+    if abs(theta) > fov:
+        return 0.0, OUT_OF_SIGHT
+    return theta, min(1.0, (fov - abs(theta)) / edge) * (1.0 - distance / radius)
 
 
-def add_by_row_py(out: FloatArray, rows: IntArray, values: FloatArray) -> None:
-    """Add ``values[i]`` to each receptor of ``out[rows[i]]``, in the given order."""
-    for i in range(rows.size):
-        for j in range(values.shape[1]):
-            out[rows[i], j] += values[i, j]
+sight = jit(sight_py)
+
+
+def raise_retina_py(
+    out: FloatArray,
+    observer: IntArray,
+    dx: FloatArray,
+    dy: FloatArray,
+    distance: FloatArray,
+    weights: FloatArray,
+    heading: FloatArray,
+    view_limits: FloatArray,
+    mu: FloatArray,
+    sigma: FloatArray,
+) -> None:
+    """Raise ``out`` to the best ``W · f(d) · g_j(θ)`` per receptor; free of pair order (§5.2)."""
+    for p in range(observer.size):
+        row = observer[p]
+        theta, scale = sight(dx[p], dy[p], distance[p], heading[row], view_limits)
+        if scale == OUT_OF_SIGHT:
+            continue
+        for j in range(mu.size):
+            offset = (theta - mu[j]) / sigma[j]
+            value = weights[p] * (scale * np.exp(-0.5 * offset * offset))
+            if value > out[row, j]:
+                out[row, j] = value
+
+
+def creature_retina_py(
+    total: FloatArray,
+    affinity: FloatArray,
+    observer: IntArray,
+    target: IntArray,
+    dx: FloatArray,
+    dy: FloatArray,
+    distance: FloatArray,
+    color: FloatArray,
+    heading: FloatArray,
+    view_limits: FloatArray,
+    mu: FloatArray,
+    sigma: FloatArray,
+) -> None:
+    """Sum of the signals per receptor, in pair order, and the best affinity (§2.5, §5.2)."""
+    for p in range(observer.size):
+        row = observer[p]
+        theta, scale = sight(dx[p], dy[p], distance[p], heading[row], view_limits)
+        if scale == OUT_OF_SIGHT:
+            continue
+        delta = abs(color[row] - color[target[p]])
+        similarity = 1.0 - 2.0 * min(delta, 1.0 - delta)
+        for j in range(mu.size):
+            offset = (theta - mu[j]) / sigma[j]
+            signal = scale * np.exp(-0.5 * offset * offset)
+            total[row, j] += signal
+            value = similarity * signal
+            if value > affinity[row, j]:
+                affinity[row, j] = value
 
 
 def retina_signals_py(
@@ -61,23 +137,13 @@ def retina_signals_py(
     Returns:
         ``(kept, signals)``: index of each pair in sight, and its signal per receptor.
     """
-    radius, fov, edge = view_limits[0], view_limits[1], view_limits[2]
     kept = np.empty(observer.size, dtype=np.int64)
     signals = np.empty((observer.size, mu.size), dtype=np.float64)
     count = 0
     for p in range(observer.size):
-        if distance[p] >= radius:
+        theta, scale = sight(dx[p], dy[p], distance[p], heading[observer[p]], view_limits)
+        if scale == OUT_OF_SIGHT:
             continue
-        if dx[p] == 0.0 and dy[p] == 0.0:
-            # A zero vector has no direction; it counts as straight ahead (ADR 0005).
-            theta = 0.0
-        else:
-            # Same wrap as space.wrap_angle, including its rounding fix.
-            wrapped = (np.arctan2(dy[p], dx[p]) - heading[observer[p]] + np.pi) % TWO_PI
-            theta = (0.0 if wrapped >= TWO_PI else wrapped) - np.pi
-        if abs(theta) > fov:
-            continue
-        scale = min(1.0, (fov - abs(theta)) / edge) * (1.0 - distance[p] / radius)
         for j in range(mu.size):
             offset = (theta - mu[j]) / sigma[j]
             signals[count, j] = scale * np.exp(-0.5 * offset * offset)
@@ -86,8 +152,8 @@ def retina_signals_py(
     return kept[:count], signals[:count]
 
 
-max_by_row = jit(max_by_row_py)
-add_by_row = jit(add_by_row_py)
+raise_retina = jit(raise_retina_py)
+creature_retina = jit(creature_retina_py)
 retina_signals = jit(retina_signals_py)
 
 
@@ -152,40 +218,47 @@ def _plant_weights(scene: Scene, config: GenomeConfig) -> FloatArray:
     return weights
 
 
-def _signals(view: CreatureView, pairs: Pairs, retina: Retina) -> tuple[IntArray, FloatArray]:
-    """Index of the pairs in sight and their ``f(d) · g_j(θ)`` (§5.2)."""
-    limits = np.array((retina.radius, retina.fov, retina.edge), dtype=np.float64)
-    kept, signals = retina_signals(
-        pairs.observer,
-        pairs.dx,
-        pairs.dy,
-        pairs.distance,
-        view.heading,
-        limits,
-        retina.mu,
-        retina.sigma,
-    )
-    return kept, signals
+def _view_limits(retina: Retina) -> FloatArray:
+    return np.array((retina.radius, retina.fov, retina.edge), dtype=np.float64)
 
 
 def _raise_channel(
     out: FloatArray, view: CreatureView, pairs: Pairs, weights: FloatArray, retina: Retina
 ) -> None:
     """Raise ``out`` to the best ``W · f(d) · g_j(θ)`` per receptor (§5.2)."""
-    kept, signals = _signals(view, pairs, retina)
-    max_by_row(out, pairs.observer[kept], weights[kept, None] * signals)
+    raise_retina(
+        out,
+        pairs.observer,
+        pairs.dx,
+        pairs.dy,
+        pairs.distance,
+        weights,
+        view.heading,
+        _view_limits(retina),
+        retina.mu,
+        retina.sigma,
+    )
 
 
 def _creature_channels(scene: Scene, retina: Retina) -> tuple[FloatArray, FloatArray]:
     """Saturated density and best affinity; the pairs already exclude self (§5.2)."""
     view, pairs = scene.view, scene.creature_pairs
-    kept, signals = _signals(view, pairs, retina)
-    rows = pairs.observer[kept]
     total = np.zeros((view.count, RECEPTORS))
-    add_by_row(total, rows, signals)
-    similarity = color_similarity(view.color[rows], view.color[pairs.target[kept]])
     affinity = np.zeros((view.count, RECEPTORS))
-    max_by_row(affinity, rows, similarity[:, None] * signals)
+    creature_retina(
+        total,
+        affinity,
+        pairs.observer,
+        pairs.target,
+        pairs.dx,
+        pairs.dy,
+        pairs.distance,
+        view.color,
+        view.heading,
+        _view_limits(retina),
+        retina.mu,
+        retina.sigma,
+    )
     return 1.0 - np.exp(-total), affinity
 
 

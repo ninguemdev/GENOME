@@ -11,12 +11,17 @@ from genome.core.config import GenomeConfig, load_config
 from genome.core.rng import continuous_world_streams
 from genome.core.sensors.pairs import find_pairs, pair_vectors, pair_vectors_py
 from genome.core.sensors.vision import (
-    add_by_row_py,
+    OUT_OF_SIGHT,
+    RECEPTORS,
     color_similarity,
+    creature_retina,
+    creature_retina_py,
     make_retina,
-    max_by_row_py,
+    raise_retina,
+    raise_retina_py,
     retina_signals,
     retina_signals_py,
+    sight_py,
     vision_channels,
     vision_radius,
 )
@@ -59,14 +64,109 @@ def test_color_similarity_is_circular() -> None:
     assert_allclose(color_similarity(a, b), [0.6, 0.0, 1.0, 0.8])
 
 
-def test_kernels_aggregate_by_row() -> None:
-    rows = np.array([0, 1, 0], dtype=np.int64)
-    values = np.array([[0.2, 0.1], [0.5, 0.0], [0.1, 0.4]])
-    largest, total = np.zeros((2, 2)), np.zeros((2, 2))
-    max_by_row_py(largest, rows, values)
-    add_by_row_py(total, rows, values)
-    assert_allclose(largest, [[0.2, 0.4], [0.5, 0.0]])
-    assert_allclose(total, [[0.3, 0.5], [0.5, 0.0]])
+def test_sight_rejects_what_is_out_of_reach_or_out_of_the_field(config: GenomeConfig) -> None:
+    retina = make_retina(vision_radius(1.0, config.sensors), config.sensors)
+    limits = np.array((retina.radius, retina.fov, retina.edge))
+    assert sight_py(1.0, 0.0, retina.radius, 0.0, limits)[1] == OUT_OF_SIGHT
+    assert sight_py(-1.0, 0.0, 1.0, 0.0, limits)[1] == OUT_OF_SIGHT
+    # Same place as the observer: straight ahead, with the falloff at its maximum.
+    assert sight_py(0.0, 0.0, 0.0, 1.0, limits) == (0.0, 1.0)
+    # f(d) = 1 − 20/40 = 0.5, and w(0) = 1.
+    assert sight_py(20.0, 0.0, 20.0, 0.0, limits) == (0.0, 0.5)
+
+
+def retina_pairs(config: GenomeConfig) -> dict[str, np.ndarray]:
+    """Pairs of two observers, ahead, aside, behind and beyond the reach (§5.2)."""
+    theta = np.radians([0.0, 35.0, 180.0, 10.0, -35.0])
+    distance = np.array([20.0, 10.0, 5.0, 50.0, 30.0])
+    return {
+        "observer": np.array([0, 0, 0, 1, 1], dtype=np.int64),
+        "target": np.array([1, 0, 1, 0, 0], dtype=np.int64),
+        "dx": distance * np.cos(theta),
+        "dy": distance * np.sin(theta),
+        "distance": distance,
+        "heading": np.zeros(2),
+    }
+
+
+@pytest.mark.parametrize("kernel", [raise_retina, raise_retina_py])
+def test_raise_retina_matches_the_signals_of_the_pairs(config: GenomeConfig, kernel: Any) -> None:
+    retina = make_retina(vision_radius(1.0, config.sensors), config.sensors)
+    limits = np.array((retina.radius, retina.fov, retina.edge))
+    pairs = retina_pairs(config)
+    weights = np.array([0.5, 1.0, 1.0, 1.0, 0.25])
+    out = np.zeros((2, RECEPTORS))
+    kernel(
+        out,
+        pairs["observer"],
+        pairs["dx"],
+        pairs["dy"],
+        pairs["distance"],
+        weights,
+        pairs["heading"],
+        limits,
+        retina.mu,
+        retina.sigma,
+    )
+    kept, signals = retina_signals_py(
+        pairs["observer"],
+        pairs["dx"],
+        pairs["dy"],
+        pairs["distance"],
+        pairs["heading"],
+        limits,
+        retina.mu,
+        retina.sigma,
+    )
+    expected = np.zeros((2, RECEPTORS))
+    for index, signal in zip(kept.tolist(), signals, strict=True):
+        row = pairs["observer"][index]
+        expected[row] = np.maximum(expected[row], weights[index] * signal)
+    assert_array_equal(kept, [0, 1, 4])
+    assert_array_equal(out, expected)
+
+
+@pytest.mark.parametrize("kernel", [creature_retina, creature_retina_py])
+def test_creature_retina_sums_and_keeps_the_best_affinity(
+    config: GenomeConfig, kernel: Any
+) -> None:
+    retina = make_retina(vision_radius(1.0, config.sensors), config.sensors)
+    limits = np.array((retina.radius, retina.fov, retina.edge))
+    pairs = retina_pairs(config)
+    color = np.array([0.1, 0.9])
+    total, affinity = np.zeros((2, RECEPTORS)), np.zeros((2, RECEPTORS))
+    kernel(
+        total,
+        affinity,
+        pairs["observer"],
+        pairs["target"],
+        pairs["dx"],
+        pairs["dy"],
+        pairs["distance"],
+        color,
+        pairs["heading"],
+        limits,
+        retina.mu,
+        retina.sigma,
+    )
+    kept, signals = retina_signals_py(
+        pairs["observer"],
+        pairs["dx"],
+        pairs["dy"],
+        pairs["distance"],
+        pairs["heading"],
+        limits,
+        retina.mu,
+        retina.sigma,
+    )
+    expected_total, expected_affinity = np.zeros((2, RECEPTORS)), np.zeros((2, RECEPTORS))
+    for index, signal in zip(kept.tolist(), signals, strict=True):
+        row = pairs["observer"][index]
+        expected_total[row] += signal
+        similarity = color_similarity(color[row : row + 1], color[pairs["target"][index:]][:1])[0]
+        expected_affinity[row] = np.maximum(expected_affinity[row], similarity * signal)
+    assert_array_equal(total, expected_total)
+    assert_array_equal(affinity, expected_affinity)
 
 
 def test_full_plant_ahead_computed_by_hand(config: GenomeConfig) -> None:
